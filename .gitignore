@@ -1,0 +1,31 @@
+# Секреты и окружение
+.env
+.secrets
+
+# Виртуальное окружение
+venv/
+env/
+ENV/
+.venv
+
+# Файлы Python (компилированные и кэш)
+__pycache__/
+*.py[cod]
+*.so
+.python-version
+
+# Папки IDE (PyCharm и другие)
+.idea/
+.vscode/
+*.iml
+
+# Файлы логов и тестов
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Файлы дистрибуции
+build/
+dist/
+*.egg-info/
