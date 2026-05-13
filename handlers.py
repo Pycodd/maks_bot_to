@@ -223,47 +223,90 @@ class BotResponses:
     ):
         """
         Отправляет обратно полученное сообщение.
-        Использует forward() для любых вложений (аудио, фото, видео, файлы).
+        Использует bot.send_message() для создания нового сообщения с вложениями.
         """
 
         ctx = await EventContext.from_event(event)
         ctx.log_info("format_received_message ВЫЗВАНА")
 
-        body = event.message.body
-        attachments = body.attachments if body else None
-        if not attachments:
+        message = event.message
+        text = message.body.text or ""
+        attachments = message.body.attachments or []
+        chat_id = message.recipient.chat_id
+
+        if not attachments and not text:
+            # Пустое сообщение — игнорируем
+            await context.set_state(None)
             return
 
-        # Маппинг реальных классов вложений maxapi на человекочитаемые
-        # названия и подходящий SenderAction. Используем сами классы, а не
-        # строковые имена — так мы защищены от опечаток и переименований.
-        first = attachments[0]
-        if isinstance(first, Image):
-            label, action = "фотографию", SenderAction.SENDING_PHOTO
-        elif isinstance(first, Video):
-            label, action = "видео", SenderAction.SENDING_VIDEO
-        elif isinstance(first, Audio):
-            label, action = "аудио", SenderAction.SENDING_FILE
-        elif isinstance(first, File):
-            label, action = "файл", SenderAction.SENDING_FILE
-        elif isinstance(first, Sticker):
-            label, action = "стикер", SenderAction.SENDING_FILE
-        else:
-            label, action = "вложение", SenderAction.SENDING_FILE
-
-        chat_id = event.message.recipient.chat_id
-        if chat_id is None:
-            return
-        await bot.send_action(chat_id=chat_id, action=action)
-
-        # Информируем пользователя о полученном вложении
-        count = len(attachments)
-        await event.message.answer(
-            f"Получено {count} вложение(й), тип: {label}. Пересылаю..."
+        # Формируем ответ
+        now = datetime.now()
+        response = (
+            f"✅ Получено сообщение!\n"
+            f"📅 {now.strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"👤 Отправитель: {user_name} (ID: {user_id})\n"
         )
 
-        # Пересылаем оригинальное сообщение обратно
-        await event.message.forward(chat_id=chat_id)
+        if text:
+            response += f"📝 Текст:\n{text}\n"
+
+        if attachments:
+            # Определяем типы вложений
+            att_types = []
+            for att in attachments:
+                att_type = att.type.lower() if att.type else "неизвестно"
+                att_types.append(att_type)
+                ctx.log_info(f"  - тип: {att_type}")
+
+            response += f"📎 Вложения: {', '.join(att_types)}\n"
+
+            # Подготавливаем вложения для отправки
+            attachments_for_send = []
+
+            for att in attachments:
+                if hasattr(att, 'payload') and att.payload:
+                    token = getattr(att.payload, 'token', None)
+                    if token:
+                        # Создаём вложение через AttachmentUpload
+                        from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
+                        from maxapi.enums.upload_type import UploadType
+
+                        att_type = att.type.lower() if att.type else "file"
+
+                        # Маппинг типов
+                        type_map = {
+                            "image": UploadType.IMAGE,
+                            "photo": UploadType.IMAGE,
+                            "video": UploadType.VIDEO,
+                            "audio": UploadType.FILE,  # аудио как файл
+                            "file": UploadType.FILE,
+                        }
+
+                        upload_type = type_map.get(att_type, UploadType.FILE)
+                        attachments_for_send.append(
+                            AttachmentUpload(
+                                type=upload_type,
+                                payload=AttachmentPayload(token=token)
+                            )
+                        )
+                        ctx.log_info(f"    добавлено вложение: {att_type} (token: {token[:20]}...)")
+
+            # Отправляем сообщение с вложениями через bot.send_message()
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=response,
+                    attachments=attachments_for_send
+                )
+                ctx.log_info(f"✅ Сообщение отправлено через send_message (вложений: {len(attachments_for_send)})")
+            except Exception as e:
+                ctx.log_info(f"❌ Ошибка при send_message: {e}")
+                # Fallback: отправляем только текст
+                await event.message.answer(response + "\n\n⚠️ Не удалось отправить вложения.")
+        else:
+            # Нет вложений — отправляем только текст
+            await event.message.answer(response)
+            ctx.log_info("Текстовый ответ отправлен")
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
