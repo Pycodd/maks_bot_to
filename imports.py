@@ -64,7 +64,10 @@ from maxapi.types.attachments.contact import Contact
 from config import (
     bot,
     dp,
-    main_router
+    main_router,
+    WEBHOOK_SECRET,
+    WEBHOOK_URL,
+    PORT, WEBHOOK_PATH, BASE_URL, BOTHOST_DOMAIN
 )
 
 """ Импорты модуля logger_config """
@@ -100,5 +103,6 @@ __all__ = [
     'BotStarted', 'UpdateUnion', 'RequestGeoLocationButton',  'CallbackHandlers',
     'bot', 'main_router', 'logging_conf', 'LoggingMiddleware', 'EventContext',
     'log_response_detailed', 'BotResponses', 'WaitingStates', 'Audio', 'Video',
-    'Image', 'File', 'Sticker', 'Location', 'Contact'
+    'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL', 'PORT', 'request', 'jsonify',
+    'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN'
 ]
