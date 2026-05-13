@@ -215,125 +215,15 @@ class BotResponses:
             user_id: int,
             bot
     ):
-        """Отправляет обратно полученное сообщение с корректными вложениями"""
+        """
+        Отправляет обратно полученное сообщение.
+        Использует forward() для любых вложений (аудио, фото, видео, файлы).
+        """
 
         message = event.message
         text = message.body.text or ""
         attachments = message.body.attachments or []
-
-        # Собираем типы вложений для отображения
-        content_types = []
-        attachments_for_reply = []
-
-        # Флаг для аудио (обрабатываем отдельно)
-        audio_sent = False
-
-        for att in attachments:
-            att_type = att.type.lower() if att.type else ""
-
-            # 📋 ЛОГИРУЕМ КАЖДОЕ ВЛОЖЕНИЕ
-            print(f"\n{'=' * 60}")
-            print(f"🔍 Обработка вложения: тип = {att_type}")
-
-            if hasattr(att, 'payload') and att.payload:
-                token = getattr(att.payload, 'token', None)
-                url = getattr(att.payload, 'url', None)
-                print(f"   Токен: {token[:50] + '...' if token and len(token) > 50 else token}")
-                print(f"   URL: {url}")
-
-                if att_type == "audio":
-                    duration = getattr(att.payload, 'duration', None)
-                    print(f"   Длительность аудио: {duration} сек.")
-            else:
-                print(f"   Нет payload у вложения")
-                token = None
-                url = None
-
-            print(f"{'=' * 60}\n")
-
-            # ========== ОБРАБОТКА АУДИО (ОТДЕЛЬНО, ЧЕРЕЗ СПЕЦИАЛЬНУЮ ФУНКЦИЮ) ==========
-            if att_type == "audio":
-                content_types.append("голосовое сообщение")
-                # Берём URL, а не токен!
-                audio_url = getattr(att.payload, 'url', None) if hasattr(att, 'payload') and att.payload else None
-
-                if audio_url and not audio_sent:
-                    print(f"🎤 Отправляем аудио по URL: {audio_url[:50]}...")
-                    try:
-                        success = await send_audio_by_token(
-                            audio_url=audio_url,  # <-- передаём URL
-                            chat_id=event.message.recipient.chat_id,
-                            bot_token=bot.token,
-                            caption="🎤 Ваше голосовое сообщение:"
-                        )
-                        if success:
-                            print("✅ Аудио успешно отправлено через send_audio_by_token")
-                            content_types.append("✅ отправлено")
-                            audio_sent = True
-                        else:
-                            print("❌ Ошибка при отправке аудио через send_audio_by_token")
-                            content_types.append("⚠️ ошибка отправки")
-                    except Exception as e:
-                        print(f"❌ Исключение при отправке аудио: {e}")
-                        content_types.append("⚠️ исключение")
-                elif not token:
-                    print("⚠️ Нет токена для аудио")
-                    content_types.append("⚠️ нет токена")
-                elif audio_sent:
-                    print("⚠️ Аудио уже отправлено, пропускаем дубликат")
-
-                # Важно: НЕ добавляем аудио в attachments_for_reply
-                continue  # переходим к следующему вложению
-
-            # ========== ОБРАБОТКА ФОТО, ВИДЕО, ФАЙЛОВ ==========
-            type_map = {
-                "image": UploadType.IMAGE,
-                "photo": UploadType.IMAGE,
-                "video": UploadType.VIDEO,
-                "file": UploadType.FILE,
-            }
-
-            if att_type in type_map and hasattr(att, 'payload') and att.payload:
-                token = getattr(att.payload, 'token', None)
-                if token:
-                    print(f"📤 Пытаюсь отправить {att_type} с токеном: {token[:50]}...")
-                    try:
-                        attachment = AttachmentUpload(
-                            type=type_map[att_type],
-                            payload=AttachmentPayload(token=token)
-                        )
-                        attachments_for_reply.append(attachment)
-                        content_types.append(att_type)
-                        print(f"   ✅ {att_type} добавлен в attachments_for_reply")
-                    except Exception as e:
-                        print(f"   ❌ Ошибка создания AttachmentUpload для {att_type}: {e}")
-                        content_types.append(f"{att_type}(ошибка)")
-
-            # ========== ОБРАБОТКА ГЕОЛОКАЦИИ ==========
-            elif att_type == "location":
-                content_types.append("геолокация")
-                if hasattr(att, 'payload') and att.payload:
-                    lat = getattr(att.payload, 'latitude', None)
-                    lon = getattr(att.payload, 'longitude', None)
-                    if lat and lon:
-                        content_types.append(f"📍 {lat}, {lon}")
-
-            # ========== ОБРАБОТКА КОНТАКТА ==========
-            elif att_type == "contact":
-                content_types.append("контакт")
-                if hasattr(att, 'payload') and att.payload:
-                    name = getattr(att.payload, 'name', '')
-                    phone = getattr(att.payload, 'phone', '')
-                    content_types.append(f"📞 {name}: {phone}")
-
-            # ========== ОБРАБОТКА ССЫЛОК ==========
-            elif att_type in ["share", "link"]:
-                content_types.append("ссылка")
-
-        if not content_types and text:
-            content_types = ["текст"]
-
-        types_str = ", ".join(content_types)
+        chat_id = message.recipient.chat_id
 
         # Формируем текстовый ответ
         now = datetime.now()
@@ -341,43 +231,32 @@ class BotResponses:
             f"✅ Получено сообщение!\n"
             f"📅 {now.strftime('%d.%m.%Y %H:%M:%S')}\n"
             f"👤 Отправитель: {user_name} (ID: {user_id})\n"
-            f"📎 Тип: {types_str}\n\n"
         )
 
         if text:
             response += f"📝 Текст:\n{text}\n"
 
-        # Если аудио уже отправлено через send_audio_by_token, добавляем уведомление
-        if audio_sent:
-            response += "\n🎤 Голосовое сообщение было отправлено отдельно.\n"
+        if attachments:
+            # Определяем типы вложений
+            att_types = []
+            for att in attachments:
+                att_type = att.type.lower() if att.type else "неизвестно"
+                att_types.append(att_type)
+            response += f"📎 Вложения: {', '.join(att_types)}\n"
 
-        # 📋 ЛОГИРУЕМ, ЧТО ИДЁТ В ОТВЕТ
-        print(f"\n{'=' * 60}")
-        print(f"📨 ОТВЕТ БОТА:")
-        print(f"   Текст: {response[:200]}...")
-        print(f"   Количество вложений в ответе: {len(attachments_for_reply)}")
-        for i, att in enumerate(attachments_for_reply):
-            print(f"     Вложение {i + 1}: тип={att.type}, payload={att.payload}")
-        print(f"   Аудио отправлено отдельно: {audio_sent}")
-        print(f"{'=' * 60}\n")
-
-        # Отправляем ответ с вложениями (фото, видео, файлы)
-        try:
-            if attachments_for_reply:
-                await event.message.answer(
-                    text=response,
-                    attachments=attachments_for_reply
-                )
-                print("✅ Ответ с вложениями отправлен успешно")
-            else:
-                await event.message.answer(response)
-                print("✅ Текстовый ответ отправлен успешно")
-        except Exception as e:
-            print(f"❌ ОШИБКА при отправке ответа: {e}")
+            # ПЕРЕСЫЛАЕМ ОРИГИНАЛЬНОЕ СООБЩЕНИЕ (работает для любых вложений!)
             try:
-                await event.message.answer(response + "\n\n⚠️ Не удалось отправить вложения.")
-            except:
-                pass
+                await event.message.forward(chat_id=chat_id)
+                response += "🔄 Сообщение переслано.\n"
+            except Exception as e:
+                print(f"❌ Ошибка при пересылке: {e}")
+                response += f"⚠️ Не удалось переслать вложения: {e}\n"
+        else:
+            # Нет вложений — просто отвечаем
+            pass
+
+        # Отправляем текстовый ответ
+        await event.message.answer(response)
 
         # Сбрасываем состояние
         await context.set_state(None)
