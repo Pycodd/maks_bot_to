@@ -9,6 +9,12 @@ from maxapi.enums.attachment import AttachmentType
 import aiohttp
 import logging
 from io import BytesIO
+from maxapi.enums.sender_action import SenderAction
+from maxapi.types.attachments.audio import Audio
+from maxapi.types.attachments.file import File
+from maxapi.types.attachments.image import Image
+from maxapi.types.attachments.sticker import Sticker
+from maxapi.types.attachments.video import Video
 
 
 async def send_audio_by_token(
@@ -223,66 +229,41 @@ class BotResponses:
         ctx = await EventContext.from_event(event)
         ctx.log_info("format_received_message ВЫЗВАНА")
 
-        message = event.message
-        text = message.body.text or ""
-        attachments = message.body.attachments or []
-        chat_id = message.recipient.chat_id
+        body = event.message.body
+        attachments = body.attachments if body else None
+        if not attachments:
+            return
 
-        ctx.log_info(f"Параметры: chat_id={chat_id}, text_len={len(text)}, attachments={len(attachments)}")
+        # Маппинг реальных классов вложений maxapi на человекочитаемые
+        # названия и подходящий SenderAction. Используем сами классы, а не
+        # строковые имена — так мы защищены от опечаток и переименований.
+        first = attachments[0]
+        if isinstance(first, Image):
+            label, action = "фотографию", SenderAction.SENDING_PHOTO
+        elif isinstance(first, Video):
+            label, action = "видео", SenderAction.SENDING_VIDEO
+        elif isinstance(first, Audio):
+            label, action = "аудио", SenderAction.SENDING_FILE
+        elif isinstance(first, File):
+            label, action = "файл", SenderAction.SENDING_FILE
+        elif isinstance(first, Sticker):
+            label, action = "стикер", SenderAction.SENDING_FILE
+        else:
+            label, action = "вложение", SenderAction.SENDING_FILE
 
-        # Формируем текстовый ответ
-        now = datetime.now()
-        response = (
-            f"✅ Получено сообщение!\n"
-            f"📅 {now.strftime('%d.%m.%Y %H:%M:%S')}\n"
-            f"👤 Отправитель: {user_name} (ID: {user_id})\n"
+        chat_id = event.message.recipient.chat_id
+        if chat_id is None:
+            return
+        await bot.send_action(chat_id=chat_id, action=action)
+
+        # Информируем пользователя о полученном вложении
+        count = len(attachments)
+        await event.message.answer(
+            f"Получено {count} вложение(й), тип: {label}. Пересылаю..."
         )
 
-        if text:
-            response += f"📝 Текст:\n{text}\n"
-            ctx.log_info(f"Добавлен текст в ответ: {text[:50]}")
-
-        if attachments:
-            ctx.log_info(f"Обработка вложений: {len(attachments)} шт.")
-
-            # Определяем типы вложений
-            att_types = []
-            for att in attachments:
-                att_type = att.type.lower() if att.type else "неизвестно"
-                att_types.append(att_type)
-                ctx.log_info(f"  - тип: {att_type}")
-
-                if att_type == "audio" and hasattr(att, 'payload') and att.payload:
-                    duration = getattr(att.payload, 'duration', None)
-                    if duration:
-                        ctx.log_info(f"    длительность: {duration} сек.")
-
-            response += f"📎 Вложения: {', '.join(att_types)}\n"
-
-            # Пересылаем оригинальное сообщение
-            ctx.log_info("Пересылка сообщения через forward()...")
-            try:
-                await event.message.forward(chat_id=chat_id)
-                ctx.log_info("forward() выполнен успешно")
-                response += "🔄 Сообщение переслано.\n"
-            except Exception as e:
-                ctx.log_info(f"ОШИБКА при forward(): {e}")
-                response += f"⚠️ Не удалось переслать вложения: {e}\n"
-        else:
-            response += "📎 Нет вложений\n"
-            ctx.log_info("Нет вложений, только текст")
-
-        # Отправляем текстовый ответ
-        ctx.log_info(f"Отправка текстового ответа (длина: {len(response)})")
-        try:
-            await event.message.answer(response)
-            ctx.log_info("Текстовый ответ отправлен успешно")
-        except Exception as e:
-            ctx.log_info(f"ОШИБКА при отправке ответа: {e}")
-            try:
-                await event.message.answer("⚠️ Произошла ошибка при формировании ответа.")
-            except:
-                pass
+        # Пересылаем оригинальное сообщение обратно
+        await event.message.forward(chat_id=chat_id)
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
