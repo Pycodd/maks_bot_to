@@ -82,7 +82,6 @@ class BotResponses:
                 "video": UploadType.VIDEO,
                 "audio": UploadType.AUDIO,
                 "file": UploadType.FILE,
-                "sticker": UploadType.STICKER,
             }
 
             if att_type in type_map and hasattr(att, 'payload') and att.payload:
