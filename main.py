@@ -30,11 +30,12 @@ def send_message(chat_id: int, text: str, attachments: list = None) -> dict:
 
 
 def answer_callback(callback_id: str, text: str = "") -> dict:
-    """Ответить на callback-запрос"""
+    """Ответить на callback-запрос (убрать 'часики' с кнопки)"""
     resp = requests.post(
         f"{BASE_URL}/answers",
         headers={"Authorization": TOKEN, "Content-Type": "application/json"},
-        json={"callback_id": callback_id, "notification": text},
+        json={"callback_id": callback_id, "text": text},  # <-- поле "text"
+        timeout=10,
     )
     resp.raise_for_status()
     return resp.json()
