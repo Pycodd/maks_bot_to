@@ -1,5 +1,5 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact)
+                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -62,133 +62,65 @@ class BotResponses:
             user_id: int,
             bot
     ):
+        """Отправляет обратно полученное сообщение с корректными вложениями"""
 
         message = event.message
         text = message.body.text or ""
         attachments = message.body.attachments or []
 
-        # Список для всех вложений бота
-        attachments_for_bot = []
-        content_types = []  # список типов для отображения
+        # Собираем типы вложений для отображения
+        content_types = []
+        attachments_for_reply = []
 
         for att in attachments:
             att_type = att.type.lower() if att.type else ""
 
-            if att_type in ["image", "photo"]:
-                content_types.append("фото")
-                if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.IMAGE,
-                        payload={
-                            "url": getattr(att.payload, 'url', None),
-                            "token": getattr(att.payload, 'token', None)
-                        },
-                        bot=bot
-                    ))
+            # Маппинг типов из входящего сообщения в UploadType
+            type_map = {
+                "image": UploadType.IMAGE,
+                "photo": UploadType.IMAGE,
+                "video": UploadType.VIDEO,
+                "audio": UploadType.AUDIO,
+                "file": UploadType.FILE,
+                "sticker": UploadType.STICKER,
+            }
 
-            elif att_type == "video":
-                content_types.append("видео")
-                if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.VIDEO,
-                        payload={
-                            "url": att.payload.url,
-                            "token": att.payload.token
-                        },
-                        bot=bot
-                    ))
-
-            elif att_type == "audio":
-                content_types.append("аудио")
-                if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.AUDIO,
-                        payload={
-                            "url": getattr(att.payload, 'url', None),
-                            "token": getattr(att.payload, 'token', None)
-                        },
-                        bot=bot
-                    ))
-
-            elif att_type == "file":
-                content_types.append("файл")
-                if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.FILE,
-                        payload={
-                            "url": getattr(att.payload, 'url', None),
-                            "token": getattr(att.payload, 'token', None)
-                        },
-                        bot=bot
-                    ))
+            if att_type in type_map and hasattr(att, 'payload') and att.payload:
+                # Получаем токен из входящего вложения
+                token = getattr(att.payload, 'token', None)
+                if token:
+                    # Создаём AttachmentUpload для ответа
+                    attachment = AttachmentUpload(
+                        type=type_map[att_type],
+                        payload=AttachmentPayload(token=token)
+                    )
+                    attachments_for_reply.append(attachment)
+                    content_types.append(att_type)
 
             elif att_type == "location":
                 content_types.append("геолокация")
+                # Для геолокации нужна отдельная обработка (не через токен)
                 if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.LOCATION,
-                        payload={
-                            "latitude": att.payload.latitude,
-                            "longitude": att.payload.longitude
-                        },
-                        bot=bot
-                    ))
+                    lat = getattr(att.payload, 'latitude', None)
+                    lon = getattr(att.payload, 'longitude', None)
+                    if lat and lon:
+                        # Отправляем геолокацию текстом или специальным вложением
+                        content_types.append(f"📍 {lat}, {lon}")
 
             elif att_type == "contact":
                 content_types.append("контакт")
                 if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.CONTACT,
-                        payload={
-                            "name": att.payload.name,
-                            "phone": att.payload.phone
-                        },
-                        bot=bot
-                    ))
+                    name = getattr(att.payload, 'name', '')
+                    phone = getattr(att.payload, 'phone', '')
+                    content_types.append(f"📞 {name}: {phone}")
 
-            elif att_type == "share":
+            elif att_type in ["share", "link"]:
                 content_types.append("ссылка")
-                # Для ссылки не создаем вложение
 
-            elif att_type == "sticker":
-                content_types.append("стикер")
-                if hasattr(att, 'payload') and att.payload:
-                    attachments_for_bot.append(Attachment(
-                        type=AttachmentType.STICKER,
-                        payload={
-                            "url": att.payload.url,
-                            "code": att.payload.code
-                        },
-                        bot=bot
-                    ))
-
-        # Если нет вложений, но есть текст
         if not content_types and text:
             content_types = ["текст"]
 
-        # Формируем строку с типами вложений
-        types_str = ", ".join(content_types) if content_types else "текст"
-        print("=" * 50)
-        print("🔍 DEBUG format_received_message:")
-        print(f"   📝 content_types: {content_types}")
-        print(f"   📝 types_str: '{types_str}'")
-        print(f"   📝 text длина: {len(text) if text else 0}")
-        print(f"   📝 text содержание: '{text[:200] if text else 'Нет текста'}'")
-        print(f"   📎 Количество исходных вложений: {len(attachments)}")
-        for i, att in enumerate(attachments):
-            print(f"   📎 Исходное вложение {i + 1}: type={att.type}")
-            if hasattr(att, 'payload') and att.payload:
-                print(f"      payload: {att.payload}")
-                if hasattr(att.payload, 'url'):
-                    print(f"      url: {att.payload.url}")
-                if hasattr(att.payload, 'token'):
-                    print(f"      token: {att.payload.token[:30] if att.payload.token else None}...")
-        print(f"   🤖 Вложений для бота: {len(attachments_for_bot)}")
-        for i, att in enumerate(attachments_for_bot):
-            print(f"   🤖 Бот вложение {i + 1}: type={att.type}")
-            if att.payload:
-                print(f"      payload: {att.payload}")
-        print("=" * 50)
+        types_str = ", ".join(content_types)
 
         # Формируем текстовый ответ
         now = datetime.now()
@@ -200,53 +132,15 @@ class BotResponses:
         )
 
         if text:
-            response += f"📝 Текст:\n{text}\n\n"
+            response += f"📝 Текст:\n{text}\n"
 
-        # Отправляем ответ с ВСЕМИ вложениями
-        if attachments_for_bot:
-            # Проверяем, есть ли стикеры среди вложений
-            has_sticker = any(
-                hasattr(att, 'type') and att.type == AttachmentType.STICKER
-                for att in attachments_for_bot
+        # Отправляем ответ с вложениями
+        if attachments_for_reply:
+            await event.message.answer(
+                text=response,
+                attachments=attachments_for_reply
             )
-
-            if has_sticker:
-                # Если есть стикер: отправляем сначала текст, потом отдельно стикеры и другие вложения
-
-                # Отделяем стикеры от остальных вложений
-                stickers = []
-                other_attachments = []
-
-                for att in attachments_for_bot:
-                    if hasattr(att, 'type') and att.type == AttachmentType.STICKER:
-                        stickers.append(att)
-                    else:
-                        other_attachments.append(att)
-
-                # 1. Сначала отправляем текст
-                await event.message.answer(response)
-
-                # 2. Потом отправляем все стикеры (каждый отдельно или все вместе)
-                for sticker in stickers:
-                    await event.message.answer(
-                        text="",
-                        attachments=[sticker]
-                    )
-
-                # 3. Потом отправляем остальные вложения (фото, видео и т.д.)
-                if other_attachments:
-                    await event.message.answer(
-                        text="",
-                        attachments=other_attachments
-                    )
-            else:
-                # Нет стикеров - отправляем всё вместе
-                await event.message.answer(
-                    text=response,
-                    attachments=attachments_for_bot
-                )
         else:
-            # Нет вложений - отправляем только текст
             await event.message.answer(response)
 
         # Сбрасываем состояние

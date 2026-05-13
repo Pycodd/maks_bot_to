@@ -52,6 +52,9 @@ from maxapi.types import (
 
 )
 
+from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
+from maxapi.enums.upload_type import UploadType
+
 from maxapi.types.attachments.audio import Audio
 from maxapi.types.attachments.video import Video
 from maxapi.types.attachments.image import Image
@@ -104,5 +107,5 @@ __all__ = [
     'bot', 'main_router', 'logging_conf', 'LoggingMiddleware', 'EventContext',
     'log_response_detailed', 'BotResponses', 'WaitingStates', 'Audio', 'Video',
     'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL', 'PORT', 'request', 'jsonify',
-    'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN'
+    'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN', 'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'Flask'
 ]
