@@ -12,90 +12,152 @@ from io import BytesIO
 
 
 async def send_audio_by_token(
-        audio_url: str,  # <-- передавайте URL, а не токен!
+        audio_url: str,
         chat_id: int,
         bot_token: str,
         caption: str = ""
 ) -> bool:
     """
-    Отправляет аудио/голосовое сообщение в MAX.
-
-    Args:
-        audio_url: Прямой URL аудио из входящего сообщения (att.payload.url)
-        chat_id: ID чата для отправки
-        bot_token: Токен вашего бота
-        caption: Подпись к аудио
+    Отправляет аудио/голосовое сообщение в MAX с подробным логированием.
     """
+
+    print("=" * 70)
+    print("🔊🔊🔊 send_audio_by_token ВЫЗВАНА 🔊🔊🔊")
+    print(f"   audio_url: {audio_url[:100] if audio_url else 'None'}...")
+    print(f"   chat_id: {chat_id}")
+    print(f"   caption: {caption}")
+    print(f"   bot_token: {bot_token[:20] if bot_token else 'None'}...")
+    print("=" * 70)
+
     try:
         async with aiohttp.ClientSession() as session:
-            # ШАГ 1: Получаем URL для загрузки аудио
+            # ========== ШАГ 1: ПОЛУЧАЕМ UPLOAD_URL ==========
+            print("\n📡 ШАГ 1: Запрашиваю upload_url у MAX API...")
+            print(f"   URL: https://platform-api.max.ru/uploads?type=audio")
+            print(f"   Headers: Authorization: {bot_token[:20]}...")
+
             async with session.post(
                     "https://platform-api.max.ru/uploads?type=audio",
                     headers={"Authorization": bot_token}
             ) as resp:
+                print(f"   Ответ от /uploads: status={resp.status}")
+
                 if resp.status != 200:
-                    logging.error(f"❌ Ошибка получения upload_url: {resp.status}")
+                    error_text = await resp.text()
+                    print(f"   ❌ ОШИБКА: status {resp.status}")
+                    print(f"   Текст ошибки: {error_text}")
                     return False
 
                 upload_data = await resp.json()
+                print(f"   ✅ Получены данные: {upload_data}")
+
                 upload_url = upload_data.get('url')
                 new_token = upload_data.get('token')
 
+                print(f"   upload_url: {upload_url[:80] if upload_url else 'None'}...")
+                print(f"   new_token: {new_token[:40] if new_token else 'None'}...")
+
                 if not upload_url or not new_token:
-                    logging.error("❌ Ответ /uploads не содержит url или token")
+                    print("   ❌ ОШИБКА: Ответ не содержит url или token")
                     return False
 
-                logging.info(f"✅ Получен upload_url для аудио")
+                print("   ✅ upload_url и token получены успешно")
 
-            # ШАГ 2: Скачиваем исходное аудио по URL
+            # ========== ШАГ 2: СКАЧИВАЕМ АУДИО ПО URL ==========
+            print(f"\n📡 ШАГ 2: Скачиваю аудио по URL...")
+            print(f"   URL для скачивания: {audio_url[:100]}...")
+
             async with session.get(audio_url) as resp:
-                if resp.status != 200:
-                    logging.error(f"❌ Ошибка скачивания аудио: {resp.status}")
-                    return False
-                audio_bytes = await resp.read()
-                logging.info(f"📥 Аудио скачано: {len(audio_bytes)} байт")
+                print(f"   Ответ на скачивание: status={resp.status}")
+                print(f"   Content-Type: {resp.headers.get('Content-Type', 'unknown')}")
+                print(f"   Content-Length: {resp.headers.get('Content-Length', 'unknown')}")
 
-            # ШАГ 3: Загружаем аудио на полученный upload_url
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    print(f"   ❌ ОШИБКА: Не удалось скачать аудио")
+                    print(f"   Статус: {resp.status}")
+                    print(f"   Текст: {error_text[:200]}")
+                    return False
+
+                audio_bytes = await resp.read()
+                print(f"   ✅ Аудио скачано успешно!")
+                print(f"   Размер: {len(audio_bytes)} байт")
+                print(f"   Первые 20 байт: {audio_bytes[:20] if len(audio_bytes) > 20 else audio_bytes}")
+
+            # ========== ШАГ 3: ЗАГРУЖАЕМ АУДИО НА СЕРВЕР ==========
+            print(f"\n📡 ШАГ 3: Загружаю аудио на сервер MAX...")
+            print(f"   URL загрузки: {upload_url[:80]}...")
+
             data = aiohttp.FormData()
             data.add_field('file', audio_bytes, filename='voice.ogg', content_type='audio/ogg')
+            print(f"   FormData создан: filename='voice.ogg', content_type='audio/ogg'")
 
             async with session.post(upload_url, data=data) as upload_resp:
+                print(f"   Ответ на загрузку: status={upload_resp.status}")
+
                 if upload_resp.status not in (200, 201):
                     text = await upload_resp.text()
-                    logging.error(f"❌ Ошибка загрузки аудио: {upload_resp.status} - {text}")
+                    print(f"   ❌ ОШИБКА: Не удалось загрузить аудио")
+                    print(f"   Статус: {upload_resp.status}")
+                    print(f"   Текст: {text[:200]}")
                     return False
-                logging.info("✅ Аудио загружено на сервер MAX")
 
-            # ШАГ 4: Отправляем сообщение с аудио
-            attachment = AttachmentUpload(
-                type=UploadType.AUDIO,
-                payload=AttachmentPayload(token=new_token)
-            )
+                print(f"   ✅ Аудио загружено на сервер MAX!")
 
-            # Используем прямой API-запрос для отправки (минуя возможные баги maxapi)
+            # ========== ШАГ 4: ОТПРАВЛЯЕМ СООБЩЕНИЕ С АУДИО ==========
+            print(f"\n📡 ШАГ 4: Отправляю сообщение с аудио...")
+            print(f"   chat_id: {chat_id}")
+            print(f"   caption: {caption}")
+            print(f"   new_token: {new_token[:40]}...")
+
+            # Формируем payload для отправки
             send_url = "https://platform-api.max.ru/messages"
+            attachment_obj = {
+                "type": "audio",
+                "payload": {"token": new_token}
+            }
             payload = {
                 "chat_id": chat_id,
                 "text": caption,
-                "attachments": [attachment.to_dict()] if hasattr(attachment, 'to_dict') else [
-                    {"type": "audio", "payload": {"token": new_token}}]
+                "attachments": [attachment_obj]
             }
+
+            print(f"   send_url: {send_url}")
+            print(f"   payload: {payload}")
 
             async with session.post(
                     send_url,
                     headers={"Authorization": bot_token, "Content-Type": "application/json"},
                     json=payload
             ) as resp:
+                print(f"   Ответ на отправку: status={resp.status}")
+
                 if resp.status != 200:
                     text = await resp.text()
-                    logging.error(f"❌ Ошибка отправки сообщения с аудио: {resp.status} - {text}")
+                    print(f"   ❌ ОШИБКА: Не удалось отправить сообщение с аудио")
+                    print(f"   Статус: {resp.status}")
+                    print(f"   Текст: {text}")
                     return False
 
-                logging.info("🎤 Аудио сообщение успешно отправлено!")
+                result = await resp.json()
+                print(f"   ✅ Аудио сообщение успешно отправлено!")
+                print(f"   Ответ от сервера: {result}")
+
+                print("\n" + "=" * 70)
+                print("🎉🎉🎉 АУДИО УСПЕШНО ОТПРАВЛЕНО! 🎉🎉🎉")
+                print("=" * 70)
                 return True
 
+    except aiohttp.ClientError as e:
+        print(f"\n❌❌❌ СЕТЕВАЯ ОШИБКА: {e}")
+        print(f"   Тип: {type(e).__name__}")
+        logging.exception(f"Сетевая ошибка при отправке аудио: {e}")
+        return False
+
     except Exception as e:
-        logging.exception(f"❌ Критическая ошибка при отправке аудио: {e}")
+        print(f"\n❌❌❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        print(f"   Тип: {type(e).__name__}")
+        logging.exception(f"Критическая ошибка при отправке аудио: {e}")
         return False
 
 
