@@ -223,7 +223,7 @@ class BotResponses:
     ):
         """
         Отправляет обратно полученное сообщение.
-        Использует bot.send_message() для создания нового сообщения с вложениями.
+        Для аудио использует скачивание и повторную загрузку через InputMediaBuffer.
         """
 
         ctx = await EventContext.from_event(event)
@@ -234,12 +234,7 @@ class BotResponses:
         attachments = message.body.attachments or []
         chat_id = message.recipient.chat_id
 
-        if not attachments and not text:
-            # Пустое сообщение — игнорируем
-            await context.set_state(None)
-            return
-
-        # Формируем ответ
+        # Формируем базовый ответ
         now = datetime.now()
         response = (
             f"✅ Получено сообщение!\n"
@@ -250,63 +245,65 @@ class BotResponses:
         if text:
             response += f"📝 Текст:\n{text}\n"
 
-        if attachments:
-            # Определяем типы вложений
-            att_types = []
-            for att in attachments:
-                att_type = att.type.lower() if att.type else "неизвестно"
-                att_types.append(att_type)
-                ctx.log_info(f"  - тип: {att_type}")
-
-            response += f"📎 Вложения: {', '.join(att_types)}\n"
-
-            # Подготавливаем вложения для отправки
-            attachments_for_send = []
-
-            for att in attachments:
-                if hasattr(att, 'payload') and att.payload:
-                    token = getattr(att.payload, 'token', None)
-                    if token:
-                        # Создаём вложение через AttachmentUpload
-                        from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
-                        from maxapi.enums.upload_type import UploadType
-
-                        att_type = att.type.lower() if att.type else "file"
-
-                        # Маппинг типов
-                        type_map = {
-                            "image": UploadType.IMAGE,
-                            "photo": UploadType.IMAGE,
-                            "video": UploadType.VIDEO,
-                            "audio": UploadType.FILE,  # аудио как файл
-                            "file": UploadType.FILE,
-                        }
-
-                        upload_type = type_map.get(att_type, UploadType.FILE)
-                        attachments_for_send.append(
-                            AttachmentUpload(
-                                type=upload_type,
-                                payload=AttachmentPayload(token=token)
-                            )
-                        )
-                        ctx.log_info(f"    добавлено вложение: {att_type} (token: {token[:20]}...)")
-
-            # Отправляем сообщение с вложениями через bot.send_message()
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=response,
-                    attachments=attachments_for_send
-                )
-                ctx.log_info(f"✅ Сообщение отправлено через send_message (вложений: {len(attachments_for_send)})")
-            except Exception as e:
-                ctx.log_info(f"❌ Ошибка при send_message: {e}")
-                # Fallback: отправляем только текст
-                await event.message.answer(response + "\n\n⚠️ Не удалось отправить вложения.")
-        else:
-            # Нет вложений — отправляем только текст
+        if not attachments:
             await event.message.answer(response)
-            ctx.log_info("Текстовый ответ отправлен")
+            await context.set_state(None)
+            return
+
+        # Обрабатываем вложения
+        att_types = []
+        has_audio = False
+        audio_url = None
+
+        for att in attachments:
+            att_type = att.type.lower() if att.type else "неизвестно"
+            att_types.append(att_type)
+            ctx.log_info(f"  - тип: {att_type}")
+
+            if att_type == "audio" and hasattr(att, 'payload') and att.payload:
+                has_audio = True
+                audio_url = getattr(att.payload, 'url', None)
+                ctx.log_info(f"    аудио URL: {audio_url[:80] if audio_url else 'None'}...")
+
+        response += f"📎 Вложения: {', '.join(att_types)}\n"
+
+        # Отправляем текстовое уведомление
+        await event.message.answer(response + "🔄 Обрабатываю вложения...")
+
+        # Обрабатываем аудио отдельно
+        if has_audio and audio_url:
+            ctx.log_info(f"Скачиваю аудио по URL: {audio_url[:50]}...")
+
+            try:
+                import aiohttp
+                from maxapi.types.input_media import InputMediaBuffer
+
+                # Скачиваем аудио
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(audio_url) as resp:
+                        if resp.status == 200:
+                            audio_data = await resp.read()
+                            ctx.log_info(f"✅ Аудио скачано: {len(audio_data)} байт")
+
+                            # Создаём вложение через InputMediaBuffer
+                            media = InputMediaBuffer(
+                                buffer=audio_data,
+                                filename="voice_message.ogg"
+                            )
+
+                            # Отправляем аудио
+                            await bot.send_message(
+                                chat_id=chat_id,
+                                text="🎤 Ваше голосовое сообщение:",
+                                attachments=[media]
+                            )
+                            ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
+                        else:
+                            ctx.log_info(f"❌ Ошибка скачивания: {resp.status}")
+                            await event.message.answer("⚠️ Не удалось скачать аудио.")
+            except Exception as e:
+                ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
+                await event.message.answer(f"⚠️ Ошибка при обработке аудио: {e}")
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
