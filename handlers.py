@@ -1,5 +1,5 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType)
+                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType, asyncio)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -246,6 +246,12 @@ class BotResponses:
 
         if attachments:
             first = attachments[0]
+            from maxapi.types.attachments.image import Image
+            from maxapi.types.attachments.video import Video
+            from maxapi.types.attachments.audio import Audio
+            from maxapi.types.attachments.file import File
+            from maxapi.types.attachments.sticker import Sticker
+            from maxapi.enums.sender_action import SenderAction
 
             if isinstance(first, Image):
                 label, action = "фотографию", SenderAction.SENDING_PHOTO
@@ -262,14 +268,6 @@ class BotResponses:
                 label, action = "стикер", SenderAction.SENDING_FILE
             else:
                 label, action = "вложение", SenderAction.SENDING_FILE
-
-            # Показываем индикатор действия (если есть)
-            if action:
-                try:
-                    await bot.send_action(chat_id=chat_id, action=action)
-                    ctx.log_info(f"send_action({action}) отправлен")
-                except Exception as e:
-                    ctx.log_info(f"send_action не сработал: {e}")
 
         # Формируем базовый ответ
         now = datetime.now()
@@ -291,15 +289,30 @@ class BotResponses:
             await context.set_state(None)
             return
 
-        # Обрабатываем аудио
+        # Обрабатываем аудио с продлённым send_action
         if audio_url:
-            # Отправляем временное уведомление (на случай, если send_action не работает)
-            status_msg = await event.message.answer("🎤 Обрабатываю голосовое сообщение... ⏳")
+            # Функция для поддержания индикатора активности
+            async def keep_sending_action(chat_id, action, stop_event):
+                """Периодически отправляет send_action, пока не получен сигнал остановки"""
+                while not stop_event.is_set():
+                    try:
+                        await bot.send_action(chat_id=chat_id, action=action)
+                        await asyncio.sleep(4)  # каждые 4 секунды (так как индикатор гаснет через ~5 сек)
+                    except Exception as e:
+                        ctx.log_info(f"keep_sending_action ошибка: {e}")
+                        break
+
+            # Запускаем фоновую задачу для поддержания индикатора
+            stop_event = asyncio.Event()
+            keep_action_task = asyncio.create_task(
+                keep_sending_action(chat_id, action, stop_event)
+            )
 
             try:
                 import aiohttp
                 from maxapi.types.input_media import InputMediaBuffer
 
+                # Скачиваем аудио (долгая операция)
                 async with aiohttp.ClientSession() as session:
                     async with session.get(audio_url) as resp:
                         if resp.status == 200:
@@ -311,12 +324,6 @@ class BotResponses:
                                 filename="voice_message.ogg"
                             )
 
-                            # Удаляем временное сообщение
-                            try:
-                                await status_msg.delete()
-                            except:
-                                pass
-
                             # Отправляем финальный ответ с аудио
                             await bot.send_message(
                                 chat_id=chat_id,
@@ -325,12 +332,16 @@ class BotResponses:
                             )
                             ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
                         else:
-                            await status_msg.edit_text(f"⚠️ Не удалось скачать аудио (статус: {resp.status})")
-                            await event.message.answer(response)
+                            ctx.log_info(f"❌ Ошибка скачивания: {resp.status}")
+                            await event.message.answer(
+                                response + f"\n\n⚠️ Не удалось скачать аудио (статус: {resp.status})")
             except Exception as e:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
-                await status_msg.edit_text(f"⚠️ Ошибка при обработке аудио: {e}")
-                await event.message.answer(response)
+                await event.message.answer(response + f"\n\n⚠️ Ошибка при обработке аудио: {e}")
+            finally:
+                # Останавливаем фоновую задачу поддержания индикатора
+                stop_event.set()
+                await keep_action_task
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
