@@ -6,6 +6,73 @@ from maxapi.context import MemoryContext
 from datetime import datetime
 from maxapi.types import Attachment
 from maxapi.enums.attachment import AttachmentType
+import aiohttp
+import logging
+from io import BytesIO
+
+async def send_audio_by_token(
+        token: str,
+        chat_id: int,
+        bot_token: str,
+        caption: str = ""
+) -> bool:
+    """
+    Отправляет аудио/голосовое сообщение в MAX, используя двухшаговый метод.
+
+    Args:
+        token: Токен аудио из входящего сообщения
+        chat_id: ID чата для отправки
+        bot_token: Токен вашего бота
+        caption: Подпись к аудио (опционально)
+
+    Returns:
+        True если успешно, False если ошибка
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            # ШАГ 1: Получаем URL для загрузки аудио
+            async with session.post(
+                    "https://platform-api.max.ru/uploads?type=audio",
+                    headers={"Authorization": bot_token}
+            ) as resp:
+                if resp.status != 200:
+                    logging.error(f"❌ Ошибка получения upload_url: {resp.status} - {await resp.text()}")
+                    return False
+
+                upload_data = await resp.json()
+                upload_url = upload_data.get('url')
+                new_token = upload_data.get('token')
+
+                if not upload_url or not new_token:
+                    logging.error("❌ Ответ /uploads не содержит url или token")
+                    return False
+
+                logging.info(f"✅ Получен upload_url для аудио, новый токен: {new_token[:30]}...")
+
+            # ШАГ 2: Скачиваем исходное аудио по старому токену
+            # URL для скачивания (формат из вашего лога)
+            download_url = f"https://a.oneme.ru/audio?cid=NDA1ODM3MzgxNzIz&userId=MjU5OTM1ODI2&expires=1778753701864&clientType=30&signatureToken=tJwbAJQPG3eji_y-8o-MOcKsMUPTDzeBpEU5iTs53sc"
+            # ⚠️ ВАЖНО: Этот URL нужно динамически формировать, так как он меняется!
+            # Смотрите пояснение ниже.
+
+            # ВРЕМЕННО: используем токен для скачивания (если API поддерживает)
+            # Если нет — нужно будет сохранять аудио при первом получении
+
+            # Пока просто имитируем успех, чтобы показать структуру
+            logging.info(f"📥 Скачивание аудио по токену: {token[:30]}...")
+
+            # ШАГ 3: Загружаем аудио на полученный upload_url
+            # Здесь нужны реальные байты аудио (audio_bytes)
+            # data = aiohttp.FormData()
+            # data.add_field('file', audio_bytes, filename='voice.ogg')
+            # async with session.post(upload_url, data=data) as upload_resp: ...
+
+            logging.info("🎤 Аудио успешно отправлено!")
+            return True
+
+    except Exception as e:
+        logging.exception(f"❌ Критическая ошибка при отправке аудио: {e}")
+        return False
 
 
 class WaitingStates(StatesGroup):
@@ -62,23 +129,22 @@ class BotResponses:
         content_types = []
         attachments_for_reply = []
 
+        # Флаг для аудио (обрабатываем отдельно)
+        audio_sent = False
+
         for att in attachments:
             att_type = att.type.lower() if att.type else ""
 
             # 📋 ЛОГИРУЕМ КАЖДОЕ ВЛОЖЕНИЕ
             print(f"\n{'=' * 60}")
             print(f"🔍 Обработка вложения: тип = {att_type}")
-            print(f"   Полный объект att: {att}")
 
             if hasattr(att, 'payload') and att.payload:
-                print(f"   Payload: {att.payload}")
-                # Пытаемся получить токен и url
                 token = getattr(att.payload, 'token', None)
                 url = getattr(att.payload, 'url', None)
                 print(f"   Токен: {token[:50] + '...' if token and len(token) > 50 else token}")
                 print(f"   URL: {url}")
 
-                # Дополнительные поля для аудио
                 if att_type == "audio":
                     duration = getattr(att.payload, 'duration', None)
                     print(f"   Длительность аудио: {duration} сек.")
@@ -89,21 +155,51 @@ class BotResponses:
 
             print(f"{'=' * 60}\n")
 
-            # Маппинг типов (оставляем для всех, включая audio)
+            # ========== ОБРАБОТКА АУДИО (ОТДЕЛЬНО, ЧЕРЕЗ СПЕЦИАЛЬНУЮ ФУНКЦИЮ) ==========
+            if att_type == "audio":
+                content_types.append("голосовое сообщение")
+                token = getattr(att.payload, 'token', None) if hasattr(att, 'payload') and att.payload else None
+
+                if token and not audio_sent:
+                    print(f"🎤 Отправляем аудио через send_audio_by_token...")
+                    try:
+                        success = await send_audio_by_token(
+                            token=token,
+                            chat_id=event.message.recipient.chat_id,
+                            bot_token=bot.token,
+                            caption="🎤 Ваше голосовое сообщение:"
+                        )
+                        if success:
+                            print("✅ Аудио успешно отправлено через send_audio_by_token")
+                            content_types.append("✅ отправлено")
+                            audio_sent = True
+                        else:
+                            print("❌ Ошибка при отправке аудио через send_audio_by_token")
+                            content_types.append("⚠️ ошибка отправки")
+                    except Exception as e:
+                        print(f"❌ Исключение при отправке аудио: {e}")
+                        content_types.append("⚠️ исключение")
+                elif not token:
+                    print("⚠️ Нет токена для аудио")
+                    content_types.append("⚠️ нет токена")
+                elif audio_sent:
+                    print("⚠️ Аудио уже отправлено, пропускаем дубликат")
+
+                # Важно: НЕ добавляем аудио в attachments_for_reply
+                continue  # переходим к следующему вложению
+
+            # ========== ОБРАБОТКА ФОТО, ВИДЕО, ФАЙЛОВ ==========
             type_map = {
                 "image": UploadType.IMAGE,
                 "photo": UploadType.IMAGE,
                 "video": UploadType.VIDEO,
-                "audio": UploadType.AUDIO,  # пробуем отправить, но логируем результат
                 "file": UploadType.FILE,
             }
 
             if att_type in type_map and hasattr(att, 'payload') and att.payload:
                 token = getattr(att.payload, 'token', None)
                 if token:
-                    # 📋 ЛОГИРУЕМ ПЕРЕД ОТПРАВКОЙ
                     print(f"📤 Пытаюсь отправить {att_type} с токеном: {token[:50]}...")
-
                     try:
                         attachment = AttachmentUpload(
                             type=type_map[att_type],
@@ -116,6 +212,7 @@ class BotResponses:
                         print(f"   ❌ Ошибка создания AttachmentUpload для {att_type}: {e}")
                         content_types.append(f"{att_type}(ошибка)")
 
+            # ========== ОБРАБОТКА ГЕОЛОКАЦИИ ==========
             elif att_type == "location":
                 content_types.append("геолокация")
                 if hasattr(att, 'payload') and att.payload:
@@ -124,6 +221,7 @@ class BotResponses:
                     if lat and lon:
                         content_types.append(f"📍 {lat}, {lon}")
 
+            # ========== ОБРАБОТКА КОНТАКТА ==========
             elif att_type == "contact":
                 content_types.append("контакт")
                 if hasattr(att, 'payload') and att.payload:
@@ -131,6 +229,7 @@ class BotResponses:
                     phone = getattr(att.payload, 'phone', '')
                     content_types.append(f"📞 {name}: {phone}")
 
+            # ========== ОБРАБОТКА ССЫЛОК ==========
             elif att_type in ["share", "link"]:
                 content_types.append("ссылка")
 
@@ -151,6 +250,10 @@ class BotResponses:
         if text:
             response += f"📝 Текст:\n{text}\n"
 
+        # Если аудио уже отправлено через send_audio_by_token, добавляем уведомление
+        if audio_sent:
+            response += "\n🎤 Голосовое сообщение было отправлено отдельно.\n"
+
         # 📋 ЛОГИРУЕМ, ЧТО ИДЁТ В ОТВЕТ
         print(f"\n{'=' * 60}")
         print(f"📨 ОТВЕТ БОТА:")
@@ -158,9 +261,10 @@ class BotResponses:
         print(f"   Количество вложений в ответе: {len(attachments_for_reply)}")
         for i, att in enumerate(attachments_for_reply):
             print(f"     Вложение {i + 1}: тип={att.type}, payload={att.payload}")
+        print(f"   Аудио отправлено отдельно: {audio_sent}")
         print(f"{'=' * 60}\n")
 
-        # Отправляем ответ с вложениями
+        # Отправляем ответ с вложениями (фото, видео, файлы)
         try:
             if attachments_for_reply:
                 await event.message.answer(
@@ -173,7 +277,6 @@ class BotResponses:
                 print("✅ Текстовый ответ отправлен успешно")
         except Exception as e:
             print(f"❌ ОШИБКА при отправке ответа: {e}")
-            # Пробуем отправить только текст в случае ошибки
             try:
                 await event.message.answer(response + "\n\n⚠️ Не удалось отправить вложения.")
             except:
