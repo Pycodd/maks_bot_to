@@ -10,23 +10,21 @@ import aiohttp
 import logging
 from io import BytesIO
 
+
 async def send_audio_by_token(
-        token: str,
+        audio_url: str,  # <-- передавайте URL, а не токен!
         chat_id: int,
         bot_token: str,
         caption: str = ""
 ) -> bool:
     """
-    Отправляет аудио/голосовое сообщение в MAX, используя двухшаговый метод.
+    Отправляет аудио/голосовое сообщение в MAX.
 
     Args:
-        token: Токен аудио из входящего сообщения
+        audio_url: Прямой URL аудио из входящего сообщения (att.payload.url)
         chat_id: ID чата для отправки
         bot_token: Токен вашего бота
-        caption: Подпись к аудио (опционально)
-
-    Returns:
-        True если успешно, False если ошибка
+        caption: Подпись к аудио
     """
     try:
         async with aiohttp.ClientSession() as session:
@@ -36,7 +34,7 @@ async def send_audio_by_token(
                     headers={"Authorization": bot_token}
             ) as resp:
                 if resp.status != 200:
-                    logging.error(f"❌ Ошибка получения upload_url: {resp.status} - {await resp.text()}")
+                    logging.error(f"❌ Ошибка получения upload_url: {resp.status}")
                     return False
 
                 upload_data = await resp.json()
@@ -47,28 +45,54 @@ async def send_audio_by_token(
                     logging.error("❌ Ответ /uploads не содержит url или token")
                     return False
 
-                logging.info(f"✅ Получен upload_url для аудио, новый токен: {new_token[:30]}...")
+                logging.info(f"✅ Получен upload_url для аудио")
 
-            # ШАГ 2: Скачиваем исходное аудио по старому токену
-            # URL для скачивания (формат из вашего лога)
-            download_url = f"https://a.oneme.ru/audio?cid=NDA1ODM3MzgxNzIz&userId=MjU5OTM1ODI2&expires=1778753701864&clientType=30&signatureToken=tJwbAJQPG3eji_y-8o-MOcKsMUPTDzeBpEU5iTs53sc"
-            # ⚠️ ВАЖНО: Этот URL нужно динамически формировать, так как он меняется!
-            # Смотрите пояснение ниже.
-
-            # ВРЕМЕННО: используем токен для скачивания (если API поддерживает)
-            # Если нет — нужно будет сохранять аудио при первом получении
-
-            # Пока просто имитируем успех, чтобы показать структуру
-            logging.info(f"📥 Скачивание аудио по токену: {token[:30]}...")
+            # ШАГ 2: Скачиваем исходное аудио по URL
+            async with session.get(audio_url) as resp:
+                if resp.status != 200:
+                    logging.error(f"❌ Ошибка скачивания аудио: {resp.status}")
+                    return False
+                audio_bytes = await resp.read()
+                logging.info(f"📥 Аудио скачано: {len(audio_bytes)} байт")
 
             # ШАГ 3: Загружаем аудио на полученный upload_url
-            # Здесь нужны реальные байты аудио (audio_bytes)
-            # data = aiohttp.FormData()
-            # data.add_field('file', audio_bytes, filename='voice.ogg')
-            # async with session.post(upload_url, data=data) as upload_resp: ...
+            data = aiohttp.FormData()
+            data.add_field('file', audio_bytes, filename='voice.ogg', content_type='audio/ogg')
 
-            logging.info("🎤 Аудио успешно отправлено!")
-            return True
+            async with session.post(upload_url, data=data) as upload_resp:
+                if upload_resp.status not in (200, 201):
+                    text = await upload_resp.text()
+                    logging.error(f"❌ Ошибка загрузки аудио: {upload_resp.status} - {text}")
+                    return False
+                logging.info("✅ Аудио загружено на сервер MAX")
+
+            # ШАГ 4: Отправляем сообщение с аудио
+            attachment = AttachmentUpload(
+                type=UploadType.AUDIO,
+                payload=AttachmentPayload(token=new_token)
+            )
+
+            # Используем прямой API-запрос для отправки (минуя возможные баги maxapi)
+            send_url = "https://platform-api.max.ru/messages"
+            payload = {
+                "chat_id": chat_id,
+                "text": caption,
+                "attachments": [attachment.to_dict()] if hasattr(attachment, 'to_dict') else [
+                    {"type": "audio", "payload": {"token": new_token}}]
+            }
+
+            async with session.post(
+                    send_url,
+                    headers={"Authorization": bot_token, "Content-Type": "application/json"},
+                    json=payload
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    logging.error(f"❌ Ошибка отправки сообщения с аудио: {resp.status} - {text}")
+                    return False
+
+                logging.info("🎤 Аудио сообщение успешно отправлено!")
+                return True
 
     except Exception as e:
         logging.exception(f"❌ Критическая ошибка при отправке аудио: {e}")
@@ -168,13 +192,14 @@ class BotResponses:
             # ========== ОБРАБОТКА АУДИО (ОТДЕЛЬНО, ЧЕРЕЗ СПЕЦИАЛЬНУЮ ФУНКЦИЮ) ==========
             if att_type == "audio":
                 content_types.append("голосовое сообщение")
-                token = getattr(att.payload, 'token', None) if hasattr(att, 'payload') and att.payload else None
+                # Берём URL, а не токен!
+                audio_url = getattr(att.payload, 'url', None) if hasattr(att, 'payload') and att.payload else None
 
-                if token and not audio_sent:
-                    print(f"🎤 Отправляем аудио через send_audio_by_token...")
+                if audio_url and not audio_sent:
+                    print(f"🎤 Отправляем аудио по URL: {audio_url[:50]}...")
                     try:
                         success = await send_audio_by_token(
-                            token=token,
+                            audio_url=audio_url,  # <-- передаём URL
                             chat_id=event.message.recipient.chat_id,
                             bot_token=bot.token,
                             caption="🎤 Ваше голосовое сообщение:"
