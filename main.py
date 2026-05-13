@@ -65,12 +65,12 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
     )
 
 
-# Дополнительный обработчик для диагностики (опционально)
-@main_router.message_created()
-async def echo_all(event):
-    """Логирует все входящие сообщения (для отладки)"""
-    ctx = await EventContext.from_event(event)
-    ctx.log_info("Получено сообщение (echo)")
+# # Дополнительный обработчик для диагностики (опционально)
+# @main_router.message_created()
+# async def echo_all(event):
+#     """Логирует все входящие сообщения (для отладки)"""
+#     ctx = await EventContext.from_event(event)
+#     ctx.log_info("Получено сообщение (echo)")
 
 
 async def main():

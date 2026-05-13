@@ -220,23 +220,15 @@ class BotResponses:
         Использует forward() для любых вложений (аудио, фото, видео, файлы).
         """
 
-        print("\n" + "=" * 80)
-        print("🔵🔵🔵 format_received_message НАЧАЛО 🔵🔵🔵")
-        print(f"   Время: {datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
-        print(f"   user_name: {user_name}")
-        print(f"   user_id: {user_id}")
-        print("=" * 80)
+        ctx = await EventContext.from_event(event)
+        ctx.log_info("format_received_message ВЫЗВАНА")
 
         message = event.message
         text = message.body.text or ""
         attachments = message.body.attachments or []
         chat_id = message.recipient.chat_id
 
-        print(f"📋 Параметры сообщения:")
-        print(f"   chat_id: {chat_id}")
-        print(f"   text длина: {len(text)} символов")
-        print(f"   text содержание: '{text[:100] if text else 'пусто'}'")
-        print(f"   количество вложений: {len(attachments)}")
+        ctx.log_info(f"Параметры: chat_id={chat_id}, text_len={len(text)}, attachments={len(attachments)}")
 
         # Формируем текстовый ответ
         now = datetime.now()
@@ -248,83 +240,56 @@ class BotResponses:
 
         if text:
             response += f"📝 Текст:\n{text}\n"
-            print(f"📝 Добавлен текст в ответ: '{text[:50]}...'")
+            ctx.log_info(f"Добавлен текст в ответ: {text[:50]}")
 
         if attachments:
-            print(f"\n📎 ОБРАБОТКА ВЛОЖЕНИЙ (всего: {len(attachments)})")
+            ctx.log_info(f"Обработка вложений: {len(attachments)} шт.")
 
             # Определяем типы вложений
             att_types = []
-            for idx, att in enumerate(attachments):
+            for att in attachments:
                 att_type = att.type.lower() if att.type else "неизвестно"
                 att_types.append(att_type)
+                ctx.log_info(f"  - тип: {att_type}")
 
-                print(f"   Вложение #{idx + 1}:")
-                print(f"      тип: {att_type}")
-
-                if hasattr(att, 'payload') and att.payload:
-                    print(f"      payload: {att.payload}")
-                    token = getattr(att.payload, 'token', None)
-                    url = getattr(att.payload, 'url', None)
-                    if token:
-                        print(f"      token: {token[:50] if len(token) > 50 else token}...")
-                    if url:
-                        print(f"      url: {url[:80] if len(url) > 80 else url}...")
-                    if att_type == "audio":
-                        duration = getattr(att.payload, 'duration', None)
-                        print(f"      duration: {duration} сек.")
-                else:
-                    print(f"      НЕТ PAYLOAD")
+                if att_type == "audio" and hasattr(att, 'payload') and att.payload:
+                    duration = getattr(att.payload, 'duration', None)
+                    if duration:
+                        ctx.log_info(f"    длительность: {duration} сек.")
 
             response += f"📎 Вложения: {', '.join(att_types)}\n"
-            print(f"\n📎 Строка типов: {', '.join(att_types)}")
 
-            # ПЕРЕСЫЛАЕМ ОРИГИНАЛЬНОЕ СООБЩЕНИЕ (работает для любых вложений!)
-            print(f"\n🔄 ПЕРЕСЫЛКА СООБЩЕНИЯ...")
-            print(f"   from chat: {chat_id}")
-            print(f"   to chat: {chat_id}")
-
+            # Пересылаем оригинальное сообщение
+            ctx.log_info("Пересылка сообщения через forward()...")
             try:
-                forward_result = await event.message.forward(chat_id=chat_id)
-                print(f"   ✅ forward() выполнен успешно!")
-                print(f"   Результат: {forward_result}")
+                await event.message.forward(chat_id=chat_id)
+                ctx.log_info("forward() выполнен успешно")
                 response += "🔄 Сообщение переслано.\n"
             except Exception as e:
-                print(f"   ❌❌❌ ОШИБКА ПРИ forward() ❌❌❌")
-                print(f"   Тип ошибки: {type(e).__name__}")
-                print(f"   Текст ошибки: {e}")
+                ctx.log_info(f"ОШИБКА при forward(): {e}")
                 response += f"⚠️ Не удалось переслать вложения: {e}\n"
         else:
-            print(f"\n📎 НЕТ ВЛОЖЕНИЙ (только текст)")
             response += "📎 Нет вложений\n"
+            ctx.log_info("Нет вложений, только текст")
 
         # Отправляем текстовый ответ
-        print(f"\n📤 ОТПРАВКА ТЕКСТОВОГО ОТВЕТА...")
-        print(f"   Длина ответа: {len(response)} символов")
-        print(f"   Содержание:\n{response[:300]}{'...' if len(response) > 300 else ''}")
-
+        ctx.log_info(f"Отправка текстового ответа (длина: {len(response)})")
         try:
             await event.message.answer(response)
-            print(f"   ✅ Текстовый ответ отправлен успешно!")
+            ctx.log_info("Текстовый ответ отправлен успешно")
         except Exception as e:
-            print(f"   ❌ Ошибка при отправке текстового ответа: {e}")
+            ctx.log_info(f"ОШИБКА при отправке ответа: {e}")
             try:
                 await event.message.answer("⚠️ Произошла ошибка при формировании ответа.")
             except:
                 pass
 
         # Сбрасываем состояние
-        print(f"\n🔄 СБРОС СОСТОЯНИЯ...")
-        try:
-            await context.set_state(None)
-            await context.set_data({})
-            print(f"   ✅ Состояние сброшено")
-        except Exception as e:
-            print(f"   ❌ Ошибка при сбросе состояния: {e}")
+        ctx.log_info("Сброс состояния waiting_for_message")
+        await context.set_state(None)
+        await context.set_data({})
 
-        print("\n" + "=" * 80)
-        print("🔵🔵🔵 format_received_message ЗАВЕРШЕНА 🔵🔵🔵")
-        print("=" * 80 + "\n")
+        ctx.log_info("format_received_message ЗАВЕРШЕНА")
 
 
 class CallbackHandlers:
