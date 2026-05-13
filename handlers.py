@@ -272,9 +272,16 @@ class BotResponses:
         if has_audio and audio_url:
             ctx.log_info(f"Скачиваю аудио по URL: {audio_url[:50]}...")
 
-            # Показываем индикатор "отправляет файл"
-            from maxapi.enums.sender_action import SenderAction
-            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+            # Способ 1: Отправляем временное сообщение "печатает..."
+            status_msg = await event.message.answer("🎤 Обрабатываю голосовое сообщение... ⏳")
+
+            # Способ 2: Показываем action (если работает)
+            try:
+                from maxapi.enums.sender_action import SenderAction
+                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+                ctx.log_info("send_action(SENDING_FILE) отправлен")
+            except Exception as e:
+                ctx.log_info(f"send_action не сработал: {e}")
 
             try:
                 import aiohttp
@@ -300,6 +307,12 @@ class BotResponses:
             except Exception as e:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
                 response += f"\n⚠️ Ошибка при обработке аудио: {e}"
+
+            # Удаляем временное сообщение
+            try:
+                await status_msg.delete()
+            except:
+                pass
 
         # Отправляем ОДНО сообщение с текстом и всеми вложениями
         try:
