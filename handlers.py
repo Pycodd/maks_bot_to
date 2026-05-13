@@ -112,6 +112,16 @@ class BotResponses:
         )
 
     @staticmethod
+    def unknown() -> str:
+        """Ответ на неизвестную команду. Класс CallbackHandlers, unknown"""
+        return "❓ Неизвестная команда. Пожалуйста, используйте кнопки меню."
+
+    @staticmethod
+    def write_message() -> str:
+        """Ответ на неизвестную команду. Класс CallbackHandlers, unknown"""
+        return "Введи сообщение"
+
+    @staticmethod
     async def format_received_message(
             event: MessageCreated,
             context: MemoryContext,
