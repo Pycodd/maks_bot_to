@@ -223,7 +223,7 @@ class BotResponses:
     ):
         """
         Отправляет обратно полученное сообщение.
-        Для аудио использует скачивание и повторную загрузку через InputMediaBuffer.
+        Поддерживает фото, видео, аудио, файлы.
         """
 
         ctx = await EventContext.from_event(event)
@@ -238,37 +238,6 @@ class BotResponses:
             await context.set_state(None)
             return
 
-        # Определяем тип вложения (если есть)
-        has_audio = False
-        audio_url = None
-        label = "сообщение"
-        action = None
-
-        if attachments:
-            first = attachments[0]
-            from maxapi.types.attachments.image import Image
-            from maxapi.types.attachments.video import Video
-            from maxapi.types.attachments.audio import Audio
-            from maxapi.types.attachments.file import File
-            from maxapi.types.attachments.sticker import Sticker
-            from maxapi.enums.sender_action import SenderAction
-
-            if isinstance(first, Image):
-                label, action = "фотографию", SenderAction.SENDING_PHOTO
-            elif isinstance(first, Video):
-                label, action = "видео", SenderAction.SENDING_VIDEO
-            elif isinstance(first, Audio):
-                label, action = "аудио", SenderAction.SENDING_FILE
-                has_audio = True
-                audio_url = getattr(first.payload, 'url', None) if hasattr(first, 'payload') else None
-                ctx.log_info(f"  аудио URL: {audio_url[:80] if audio_url else 'None'}...")
-            elif isinstance(first, File):
-                label, action = "файл", SenderAction.SENDING_FILE
-            elif isinstance(first, Sticker):
-                label, action = "стикер", SenderAction.SENDING_FILE
-            else:
-                label, action = "вложение", SenderAction.SENDING_FILE
-
         # Формируем базовый ответ
         now = datetime.now()
         response = (
@@ -280,39 +249,89 @@ class BotResponses:
         if text:
             response += f"📝 Текст:\n{text}\n"
 
-        if attachments:
-            response += f"📎 Вложения: {len(attachments)} шт., тип: {label}\n"
-
-        # Если нет аудио — просто отвечаем
-        if not has_audio:
+        if not attachments:
             await event.message.answer(response)
             await context.set_state(None)
             return
 
-        # Обрабатываем аудио с продлённым send_action
-        if audio_url:
-            # Функция для поддержания индикатора активности
-            async def keep_sending_action(chat_id, action, stop_event):
-                """Периодически отправляет send_action, пока не получен сигнал остановки"""
-                while not stop_event.is_set():
-                    try:
-                        await bot.send_action(chat_id=chat_id, action=action)
-                        await asyncio.sleep(4)  # каждые 4 секунды (так как индикатор гаснет через ~5 сек)
-                    except Exception as e:
-                        ctx.log_info(f"keep_sending_action ошибка: {e}")
-                        break
+        attachments_for_send = []
+        attachment_types = []
+        need_download = False
+        audio_url = None
 
-            # Запускаем фоновую задачу для поддержания индикатора
-            stop_event = asyncio.Event()
-            keep_action_task = asyncio.create_task(
-                keep_sending_action(chat_id, action, stop_event)
-            )
+        for att in attachments:
+            if isinstance(att, Image):
+                attachment_types.append("фото")
+                if hasattr(att, 'payload') and att.payload:
+                    token = getattr(att.payload, 'token', None)
+                    if token:
+                        from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
+                        from maxapi.enums.upload_type import UploadType
+                        attachments_for_send.append(
+                            AttachmentUpload(
+                                type=UploadType.IMAGE,
+                                payload=AttachmentPayload(token=token)
+                            )
+                        )
+                        ctx.log_info(f"  фото добавлено (токен: {token[:20]}...)")
+
+            elif isinstance(att, Video):
+                attachment_types.append("видео")
+                if hasattr(att, 'payload') and att.payload:
+                    token = getattr(att.payload, 'token', None)
+                    if token:
+                        from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
+                        from maxapi.enums.upload_type import UploadType
+                        attachments_for_send.append(
+                            AttachmentUpload(
+                                type=UploadType.VIDEO,
+                                payload=AttachmentPayload(token=token)
+                            )
+                        )
+                        ctx.log_info(f"  видео добавлено (токен: {token[:20]}...)")
+
+            elif isinstance(att, Audio):
+                attachment_types.append("аудио")
+                need_download = True
+                if hasattr(att, 'payload') and att.payload:
+                    audio_url = getattr(att.payload, 'url', None)
+                    ctx.log_info(f"  аудио URL: {audio_url[:80] if audio_url else 'None'}...")
+
+            elif isinstance(att, File):
+                attachment_types.append("файл")
+                if hasattr(att, 'payload') and att.payload:
+                    token = getattr(att.payload, 'token', None)
+                    if token:
+                        from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
+                        from maxapi.enums.upload_type import UploadType
+                        attachments_for_send.append(
+                            AttachmentUpload(
+                                type=UploadType.FILE,
+                                payload=AttachmentPayload(token=token)
+                            )
+                        )
+                        ctx.log_info(f"  файл добавлено (токен: {token[:20]}...)")
+
+            elif isinstance(att, Sticker):
+                attachment_types.append("стикер")
+                # Стикеры требуют особой обработки
+                ctx.log_info(f"  стикер (пока не обрабатывается)")
+            else:
+                attachment_types.append("неизвестно")
+                ctx.log_info(f"  неизвестный тип: {type(att)}")
+
+        response += f"📎 Вложения: {', '.join(attachment_types)}\n"
+
+        # Если есть аудио — скачиваем и отправляем через InputMediaBuffer
+        if need_download and audio_url:
+            # Показываем индикатор
+            if attachment_types[0] == "аудио":
+                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
             try:
                 import aiohttp
                 from maxapi.types.input_media import InputMediaBuffer
 
-                # Скачиваем аудио (долгая операция)
                 async with aiohttp.ClientSession() as session:
                     async with session.get(audio_url) as resp:
                         if resp.status == 200:
@@ -324,7 +343,7 @@ class BotResponses:
                                 filename="voice_message.ogg"
                             )
 
-                            # Отправляем финальный ответ с аудио
+                            # Отправляем ответ с аудио
                             await bot.send_message(
                                 chat_id=chat_id,
                                 text=response,
@@ -332,16 +351,37 @@ class BotResponses:
                             )
                             ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
                         else:
-                            ctx.log_info(f"❌ Ошибка скачивания: {resp.status}")
-                            await event.message.answer(
-                                response + f"\n\n⚠️ Не удалось скачать аудио (статус: {resp.status})")
+                            ctx.log_info(f"❌ Ошибка скачивания аудио: {resp.status}")
+                            await event.message.answer(response + f"\n\n⚠️ Не удалось скачать аудио")
             except Exception as e:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
-                await event.message.answer(response + f"\n\n⚠️ Ошибка при обработке аудио: {e}")
-            finally:
-                # Останавливаем фоновую задачу поддержания индикатора
-                stop_event.set()
-                await keep_action_task
+                await event.message.answer(response + f"\n\n⚠️ Ошибка: {e}")
+
+        # Если есть фото/видео/файлы (без аудио)
+        elif attachments_for_send:
+            # Показываем соответствующий индикатор
+            if "видео" in attachment_types:
+                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_VIDEO)
+            elif "фото" in attachment_types:
+                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_PHOTO)
+            else:
+                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+
+            # Отправляем ответ с вложениями
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=response,
+                    attachments=attachments_for_send
+                )
+                ctx.log_info(f"✅ Сообщение отправлено с {len(attachments_for_send)} вложениями")
+            except Exception as e:
+                ctx.log_info(f"❌ Ошибка при отправке: {e}")
+                await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
+        else:
+            # Нет обработанных вложений — отправляем только текст
+            await event.message.answer(response)
+            ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
