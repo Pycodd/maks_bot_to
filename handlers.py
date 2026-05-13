@@ -223,7 +223,7 @@ class BotResponses:
     ):
         """
         Отправляет обратно полученное сообщение.
-        Поддерживает фото, видео, аудио, файлы.
+        Поддерживает фото, видео, аудио, файлы, геолокацию, контакты.
         """
 
         ctx = await EventContext.from_event(event)
@@ -258,6 +258,8 @@ class BotResponses:
         attachment_types = []
         need_download = False
         audio_url = None
+        location_data = None
+        contact_data = None
 
         for att in attachments:
             if isinstance(att, Image):
@@ -312,9 +314,24 @@ class BotResponses:
                         )
                         ctx.log_info(f"  файл добавлено (токен: {token[:20]}...)")
 
+            elif isinstance(att, Location):
+                attachment_types.append("геолокация")
+                if hasattr(att, 'payload') and att.payload:
+                    lat = getattr(att.payload, 'latitude', None)
+                    lon = getattr(att.payload, 'longitude', None)
+                    location_data = (lat, lon)
+                    ctx.log_info(f"  геолокация: {lat}, {lon}")
+
+            elif isinstance(att, Contact):
+                attachment_types.append("контакт")
+                if hasattr(att, 'payload') and att.payload:
+                    name = getattr(att.payload, 'name', '')
+                    phone = getattr(att.payload, 'phone', '')
+                    contact_data = (name, phone)
+                    ctx.log_info(f"  контакт: {name}, {phone}")
+
             elif isinstance(att, Sticker):
                 attachment_types.append("стикер")
-                # Стикеры требуют особой обработки
                 ctx.log_info(f"  стикер (пока не обрабатывается)")
             else:
                 attachment_types.append("неизвестно")
@@ -322,11 +339,25 @@ class BotResponses:
 
         response += f"📎 Вложения: {', '.join(attachment_types)}\n"
 
-        # Если есть аудио — скачиваем и отправляем через InputMediaBuffer
+        # Если есть геолокация — отправляем как текст (или можно как вложение)
+        if location_data:
+            lat, lon = location_data
+            response += f"📍 Координаты: {lat}, {lon}\n"
+            # Ссылка на карту (можно использовать Яндекс.Карты или Google Maps)
+            maps_url = f"https://maps.google.com/?q={lat},{lon}"
+            response += f"🗺️ Карта: {maps_url}\n"
+
+        # Если есть контакт — отправляем как текст
+        if contact_data:
+            name, phone = contact_data
+            response += f"📞 Контакт: {name}\n"
+            if phone:
+                response += f"📱 Телефон: {phone}\n"
+
+        # Обработка аудио (требует скачивания)
         if need_download and audio_url:
             # Показываем индикатор
-            if attachment_types[0] == "аудио":
-                await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
             try:
                 import aiohttp
@@ -343,7 +374,6 @@ class BotResponses:
                                 filename="voice_message.ogg"
                             )
 
-                            # Отправляем ответ с аудио
                             await bot.send_message(
                                 chat_id=chat_id,
                                 text=response,
@@ -357,7 +387,7 @@ class BotResponses:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
                 await event.message.answer(response + f"\n\n⚠️ Ошибка: {e}")
 
-        # Если есть фото/видео/файлы (без аудио)
+        # Обработка фото/видео/файлов (без аудио)
         elif attachments_for_send:
             # Показываем соответствующий индикатор
             if "видео" in attachment_types:
@@ -367,7 +397,6 @@ class BotResponses:
             else:
                 await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
-            # Отправляем ответ с вложениями
             try:
                 await bot.send_message(
                     chat_id=chat_id,
@@ -378,6 +407,13 @@ class BotResponses:
             except Exception as e:
                 ctx.log_info(f"❌ Ошибка при отправке: {e}")
                 await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
+
+        # Если только геолокация и/или контакт (без медиа)
+        elif location_data or contact_data:
+            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+            await event.message.answer(response)
+            ctx.log_info("Ответ с геолокацией/контактом отправлен")
+
         else:
             # Нет обработанных вложений — отправляем только текст
             await event.message.answer(response)
