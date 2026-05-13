@@ -45,16 +45,6 @@ class BotResponses:
         )
 
     @staticmethod
-    def unknown() -> str:
-        """Ответ на неизвестную команду. Класс CallbackHandlers, unknown"""
-        return "❓ Неизвестная команда. Пожалуйста, используйте кнопки меню."
-
-    @staticmethod
-    def write_message() -> str:
-        """Ответ на неизвестную команду. Класс CallbackHandlers, unknown"""
-        return "Введи сообщение"
-
-    @staticmethod
     async def format_received_message(
             event: MessageCreated,
             context: MemoryContext,
@@ -75,35 +65,63 @@ class BotResponses:
         for att in attachments:
             att_type = att.type.lower() if att.type else ""
 
-            # Маппинг типов из входящего сообщения в UploadType
+            # 📋 ЛОГИРУЕМ КАЖДОЕ ВЛОЖЕНИЕ
+            print(f"\n{'=' * 60}")
+            print(f"🔍 Обработка вложения: тип = {att_type}")
+            print(f"   Полный объект att: {att}")
+
+            if hasattr(att, 'payload') and att.payload:
+                print(f"   Payload: {att.payload}")
+                # Пытаемся получить токен и url
+                token = getattr(att.payload, 'token', None)
+                url = getattr(att.payload, 'url', None)
+                print(f"   Токен: {token[:50] + '...' if token and len(token) > 50 else token}")
+                print(f"   URL: {url}")
+
+                # Дополнительные поля для аудио
+                if att_type == "audio":
+                    duration = getattr(att.payload, 'duration', None)
+                    print(f"   Длительность аудио: {duration} сек.")
+            else:
+                print(f"   Нет payload у вложения")
+                token = None
+                url = None
+
+            print(f"{'=' * 60}\n")
+
+            # Маппинг типов (оставляем для всех, включая audio)
             type_map = {
                 "image": UploadType.IMAGE,
                 "photo": UploadType.IMAGE,
                 "video": UploadType.VIDEO,
-                "audio": UploadType.AUDIO,
+                "audio": UploadType.AUDIO,  # пробуем отправить, но логируем результат
                 "file": UploadType.FILE,
             }
 
             if att_type in type_map and hasattr(att, 'payload') and att.payload:
-                # Получаем токен из входящего вложения
                 token = getattr(att.payload, 'token', None)
                 if token:
-                    # Создаём AttachmentUpload для ответа
-                    attachment = AttachmentUpload(
-                        type=type_map[att_type],
-                        payload=AttachmentPayload(token=token)
-                    )
-                    attachments_for_reply.append(attachment)
-                    content_types.append(att_type)
+                    # 📋 ЛОГИРУЕМ ПЕРЕД ОТПРАВКОЙ
+                    print(f"📤 Пытаюсь отправить {att_type} с токеном: {token[:50]}...")
+
+                    try:
+                        attachment = AttachmentUpload(
+                            type=type_map[att_type],
+                            payload=AttachmentPayload(token=token)
+                        )
+                        attachments_for_reply.append(attachment)
+                        content_types.append(att_type)
+                        print(f"   ✅ {att_type} добавлен в attachments_for_reply")
+                    except Exception as e:
+                        print(f"   ❌ Ошибка создания AttachmentUpload для {att_type}: {e}")
+                        content_types.append(f"{att_type}(ошибка)")
 
             elif att_type == "location":
                 content_types.append("геолокация")
-                # Для геолокации нужна отдельная обработка (не через токен)
                 if hasattr(att, 'payload') and att.payload:
                     lat = getattr(att.payload, 'latitude', None)
                     lon = getattr(att.payload, 'longitude', None)
                     if lat and lon:
-                        # Отправляем геолокацию текстом или специальным вложением
                         content_types.append(f"📍 {lat}, {lon}")
 
             elif att_type == "contact":
@@ -133,14 +151,33 @@ class BotResponses:
         if text:
             response += f"📝 Текст:\n{text}\n"
 
+        # 📋 ЛОГИРУЕМ, ЧТО ИДЁТ В ОТВЕТ
+        print(f"\n{'=' * 60}")
+        print(f"📨 ОТВЕТ БОТА:")
+        print(f"   Текст: {response[:200]}...")
+        print(f"   Количество вложений в ответе: {len(attachments_for_reply)}")
+        for i, att in enumerate(attachments_for_reply):
+            print(f"     Вложение {i + 1}: тип={att.type}, payload={att.payload}")
+        print(f"{'=' * 60}\n")
+
         # Отправляем ответ с вложениями
-        if attachments_for_reply:
-            await event.message.answer(
-                text=response,
-                attachments=attachments_for_reply
-            )
-        else:
-            await event.message.answer(response)
+        try:
+            if attachments_for_reply:
+                await event.message.answer(
+                    text=response,
+                    attachments=attachments_for_reply
+                )
+                print("✅ Ответ с вложениями отправлен успешно")
+            else:
+                await event.message.answer(response)
+                print("✅ Текстовый ответ отправлен успешно")
+        except Exception as e:
+            print(f"❌ ОШИБКА при отправке ответа: {e}")
+            # Пробуем отправить только текст в случае ошибки
+            try:
+                await event.message.answer(response + "\n\n⚠️ Не удалось отправить вложения.")
+            except:
+                pass
 
         # Сбрасываем состояние
         await context.set_state(None)
