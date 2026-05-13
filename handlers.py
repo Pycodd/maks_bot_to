@@ -254,6 +254,7 @@ class BotResponses:
         att_types = []
         has_audio = False
         audio_url = None
+        attachments_for_send = []
 
         for att in attachments:
             att_type = att.type.lower() if att.type else "неизвестно"
@@ -267,12 +268,13 @@ class BotResponses:
 
         response += f"📎 Вложения: {', '.join(att_types)}\n"
 
-        # Отправляем текстовое уведомление
-        await event.message.answer(response + "🔄 Обрабатываю вложения...")
-
-        # Обрабатываем аудио отдельно
+        # Если есть аудио, обрабатываем его отдельно
         if has_audio and audio_url:
             ctx.log_info(f"Скачиваю аудио по URL: {audio_url[:50]}...")
+
+            # Показываем индикатор "отправляет файл"
+            from maxapi.enums.sender_action import SenderAction
+            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
             try:
                 import aiohttp
@@ -290,20 +292,30 @@ class BotResponses:
                                 buffer=audio_data,
                                 filename="voice_message.ogg"
                             )
-
-                            # Отправляем аудио
-                            await bot.send_message(
-                                chat_id=chat_id,
-                                text="🎤 Ваше голосовое сообщение:",
-                                attachments=[media]
-                            )
-                            ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
+                            attachments_for_send.append(media)
+                            ctx.log_info("✅ Аудио добавлено в attachments_for_send")
                         else:
                             ctx.log_info(f"❌ Ошибка скачивания: {resp.status}")
-                            await event.message.answer("⚠️ Не удалось скачать аудио.")
+                            response += f"\n⚠️ Не удалось скачать аудио (статус: {resp.status})"
             except Exception as e:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
-                await event.message.answer(f"⚠️ Ошибка при обработке аудио: {e}")
+                response += f"\n⚠️ Ошибка при обработке аудио: {e}"
+
+        # Отправляем ОДНО сообщение с текстом и всеми вложениями
+        try:
+            if attachments_for_send:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=response,
+                    attachments=attachments_for_send
+                )
+                ctx.log_info(f"✅ Сообщение отправлено через send_message (вложений: {len(attachments_for_send)})")
+            else:
+                await event.message.answer(response)
+                ctx.log_info("Текстовый ответ отправлен")
+        except Exception as e:
+            ctx.log_info(f"❌ Ошибка при отправке: {e}")
+            await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
 
         # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
