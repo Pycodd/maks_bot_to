@@ -17,37 +17,37 @@ BOTHOST_DOMAIN = "bot-1778649490-6034-d-andrey-v.bothost.tech"
 WEBHOOK_URL = f"https://{BOTHOST_DOMAIN}{WEBHOOK_PATH}"
 
 
-# @main_router.message_created(LoggingMiddleware())
-# async def handle_audio_messages(event: MessageCreated, context: MemoryContext = None):
-#     """Специальный обработчик для аудио/голосовых сообщений"""
-#
-#     attachments = event.message.body.attachments or []
-#     att_types = [att.type for att in attachments]
-#
-#     # Проверяем, есть ли audio в вложениях
-#     if "audio" not in att_types:
-#         return  # Не аудио - игнорируем
-#
-#     # Проверяем состояние
-#     if context:
-#         current_state = await context.get_state()
-#         if current_state != WaitingStates.waiting_for_message:
-#             print(f"🔥 Аудио получено, но состояние не ожидания: {current_state}")
-#             return
-#
-#     print("🔥 ПОЛУЧЕНО АУДИО/ГОЛОСОВОЕ! Обрабатываем...")
-#
-#     ctx = await EventContext.from_event(event)
-#     user_name = event.message.sender.first_name or f"User_{ctx.user_id}"
-#
-#     # Обрабатываем голосовое сообщение
-#     await BotResponses.format_received_message(
-#         event=event,
-#         context=context,
-#         user_name=user_name,
-#         user_id=ctx.user_id,
-#         bot=bot
-#     )
+@main_router.message_created(LoggingMiddleware())
+async def handle_audio_messages(event: MessageCreated, context: MemoryContext = None):
+    """Специальный обработчик для аудио/голосовых сообщений"""
+
+    attachments = event.message.body.attachments or []
+    att_types = [att.type for att in attachments]
+
+    # Проверяем, есть ли audio в вложениях
+    if "audio" not in att_types:
+        return  # Не аудио - игнорируем
+
+    # Проверяем состояние
+    if context:
+        current_state = await context.get_state()
+        if current_state != WaitingStates.waiting_for_message:
+            print(f"🔥 Аудио получено, но состояние не ожидания: {current_state}")
+            return
+
+    print("🔥 ПОЛУЧЕНО АУДИО/ГОЛОСОВОЕ! Обрабатываем...")
+
+    ctx = await EventContext.from_event(event)
+    user_name = event.message.sender.first_name or f"User_{ctx.user_id}"
+
+    # Обрабатываем голосовое сообщение
+    await BotResponses.format_received_message(
+        event=event,
+        context=context,
+        user_name=user_name,
+        user_id=ctx.user_id,
+        bot=bot
+    )
 
 
 @main_router.message_created(CommandStart(), LoggingMiddleware())
@@ -107,12 +107,12 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
     )
 
 
-# Дополнительный обработчик для диагностики (опционально)
-@main_router.message_created()
-async def echo_all(event):
-    """Логирует все входящие сообщения (для отладки)"""
-    ctx = await EventContext.from_event(event)
-    ctx.log_info("Получено сообщение (echo)")
+# # Дополнительный обработчик для диагностики (опционально)
+# @main_router.message_created()
+# async def echo_all(event):
+#     """Логирует все входящие сообщения (для отладки)"""
+#     ctx = await EventContext.from_event(event)
+#     ctx.log_info("Получено сообщение (echo)")
 
 
 async def main():
