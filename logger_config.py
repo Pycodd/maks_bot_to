@@ -1,11 +1,28 @@
-from imports import logging, json, Callable, Awaitable, BaseMiddleware, Dict, Any, UpdateUnion, time
+from imports import (logging, json, Callable, Awaitable, BaseMiddleware,
+                     Dict, Any, UpdateUnion, time, datetime, pytz)
 
 
 def logging_conf():
+    """Настройка логирования с часовым поясом Волгоград (UTC+3)"""
+
+    def custom_format_time(self, record, datefmt=None):
+        tz = pytz.timezone('Europe/Volgograd')
+        dt = datetime.fromtimestamp(record.created, tz=tz)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat()
+
+    logging.Formatter.formatTime = custom_format_time
+
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.FileHandler("bot_updates.log", encoding="utf-8"), logging.StreamHandler()])
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler("bot_updates.log", encoding="utf-8"),
+            logging.StreamHandler()
+        ]
+    )
 
 
 def get_chat_id_from_event(event_object: Any) -> str:

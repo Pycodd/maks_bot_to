@@ -1,5 +1,5 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType, asyncio)
+                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType, asyncio, pytz)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -24,6 +24,7 @@ try:
 except ImportError:
     _has_vcf_parser = False
 
+TZ_VOLGOGRAD = pytz.timezone('Europe/Volgograd')
 
 class WaitingStates(StatesGroup):
     """Группа состояний ожидания"""
@@ -81,7 +82,8 @@ class BotResponses:
     ):
         """
         Отправляет обратно полученное сообщение.
-        Поддерживает фото, видео, аудио, файлы, геолокацию, контакты.
+        Поддерживает фото, видео, аудио, файлы, геолокацию.
+        Контакты не обрабатываются.
         """
 
         ctx = await EventContext.from_event(event)
@@ -97,7 +99,7 @@ class BotResponses:
             return
 
         # Формируем базовый ответ
-        now = datetime.now()
+        now = datetime.now(TZ_VOLGOGRAD)
         response = (
             f"✅ Получено сообщение!\n"
             f"📅 {now.strftime('%d.%m.%Y %H:%M:%S')}\n"
@@ -117,7 +119,6 @@ class BotResponses:
         need_download = False
         audio_url = None
         location_data = None
-        contact_data = None
 
         for att in attachments:
             if isinstance(att, Image):
@@ -209,55 +210,9 @@ class BotResponses:
                     ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
 
             elif isinstance(att, Contact):
-                attachment_types.append("контакт")
-
-                name = None
-                phone = None
-                email = None
-                user_id_contact = None
-
-                if hasattr(att, 'payload') and att.payload:
-                    # 🔥 ИЗВЛЕКАЕМ ТЕЛЕФОН ИЗ VCF
-                    vcf_info = getattr(att.payload, 'vcf_info', None)
-                    if vcf_info:
-                        ctx.log_info(f"  VCF найден, длина: {len(vcf_info)}")
-                        # Ручной парсинг VCF
-                        for line in vcf_info.split('\n'):
-                            if line.startswith('FN:'):
-                                name = line[3:].strip()
-                                ctx.log_info(f"    FN: {name}")
-                            elif line.startswith('TEL;') or line.startswith('TEL:'):
-                                phone = line.split(':')[-1].strip()
-                                ctx.log_info(f"    TEL: {phone}")
-                            elif line.startswith('EMAIL:'):
-                                email = line[6:].strip()
-                                ctx.log_info(f"    EMAIL: {email}")
-
-                    # max_info (контакт пользователя MAX)
-                    max_info = getattr(att.payload, 'max_info', None)
-                    if max_info:
-                        if not name:
-                            name = getattr(max_info, 'first_name', '')
-                            last_name = getattr(max_info, 'last_name', '')
-                            if last_name:
-                                name = f"{name} {last_name}".strip()
-                        user_id_contact = getattr(max_info, 'user_id', None)
-                        ctx.log_info(f"  max_info: name={name}, user_id={user_id_contact}")
-                else:
-                    # Если данные прямо в att
-                    name = getattr(att, 'name', '')
-                    phone = getattr(att, 'phone', '')
-                    ctx.log_info(f"  контакт (прямой): name={name}, phone={phone}")
-
-                contact_data = {
-                    'name': name or 'Не указано',
-                    'phone': phone or None,
-                    'email': email,
-                    'user_id': user_id_contact
-                }
-
-                ctx.log_info(
-                    f"  итоговый контакт: name={contact_data['name']}, phone={contact_data['phone']}, user_id={contact_data['user_id']}")
+                # ⚠️ КОНТАКТЫ ИГНОРИРУЮТСЯ
+                attachment_types.append("контакт (игнорирован)")
+                ctx.log_info(f"  контакт получен, но игнорируется")
 
             elif isinstance(att, Sticker):
                 attachment_types.append("стикер")
@@ -287,26 +242,6 @@ class BotResponses:
             response += f"   🗺️ Google Maps: {google_maps}\n"
             response += f"   🗺️ Яндекс.Карты: {yandex_maps}\n"
 
-            response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
-
-        # ========== КОНТАКТ ==========
-        if contact_data:
-            name = contact_data.get('name', 'Не указано')
-            phone = contact_data.get('phone')
-            user_id_contact = contact_data.get('user_id')
-
-            response += f"\n📇 **Контакт:**\n"
-            response += f"   👤 Имя: {name}\n"
-            if phone:
-                phone_str = str(phone)
-                # Форматируем номер
-                if len(phone_str) == 11 and phone_str.startswith('7'):
-                    phone_str = f"+{phone_str}"
-                response += f"   📞 Телефон: {phone_str}\n"
-            else:
-                response += f"   📞 Телефон: не предоставлен\n"
-            if user_id_contact:
-                response += f"   🆔 ID пользователя MAX: {user_id_contact}\n"
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
         # ========== АУДИО ==========
@@ -361,11 +296,11 @@ class BotResponses:
                 ctx.log_info(f"❌ Ошибка при отправке: {e}")
                 await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
 
-        # ========== ТОЛЬКО ГЕОЛОКАЦИЯ/КОНТАКТ ==========
-        elif location_data or contact_data:
+        # ========== ТОЛЬКО ГЕОЛОКАЦИЯ ==========
+        elif location_data:
             await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
             await event.message.answer(response)
-            ctx.log_info("Ответ с геолокацией/контактом отправлен")
+            ctx.log_info("Ответ с геолокацией отправлен")
 
         else:
             await event.message.answer(response)
