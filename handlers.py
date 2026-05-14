@@ -172,33 +172,40 @@ class BotResponses:
                         )
                         ctx.log_info(f"  файл добавлено (токен: {token[:20]}...)")
 
-
             elif isinstance(att, Location):
-
                 attachment_types.append("геолокация")
-
                 # Координаты могут быть прямо в att или в payload
-
                 lat = getattr(att, 'latitude', None)
-
                 lon = getattr(att, 'longitude', None)
-
                 if lat is None and hasattr(att, 'payload') and att.payload:
                     lat = getattr(att.payload, 'latitude', None)
-
                     lon = getattr(att.payload, 'longitude', None)
 
                 if lat and lon:
-                    # Сохраняем только координаты (без попытки получить адрес)
+                    # Получаем адрес через Nominatim (OpenStreetMap)
+                    address = None
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            # Nominatim требует User-Agent
+                            headers = {'User-Agent': 'MAX_Bot/1.0 (https://bothost.ru)'}
+                            url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+                            async with session.get(url, headers=headers) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    address = data.get('display_name')
+                                    if address:
+                                        ctx.log_info(f"  адрес получен: {address[:80]}...")
+                                else:
+                                    ctx.log_info(f"  Nominatim вернул статус: {resp.status}")
+                    except Exception as e:
+                        ctx.log_info(f"  ошибка геокодинга: {e}")
 
                     location_data = {
-
                         'lat': lat,
-
-                        'lon': lon
-
+                        'lon': lon,
+                        'address': address
                     }
-
                     ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
 
             elif isinstance(att, Contact):
@@ -213,25 +220,20 @@ class BotResponses:
                     # 🔥 ИЗВЛЕКАЕМ ТЕЛЕФОН ИЗ VCF
                     vcf_info = getattr(att.payload, 'vcf_info', None)
                     if vcf_info:
-                        try:
-                            if _has_vcf_parser:
-                                vcf_data = parse_vcf_info(vcf_info)
-                                name = vcf_data.full_name
-                                if vcf_data.phones:
-                                    phone = vcf_data.phones[0]
-                                ctx.log_info(f"  контакт из VCF (parse_vcf_info): name={name}, phone={phone}")
-                            else:
-                                # Ручной парсинг VCF
-                                for line in vcf_info.split('\n'):
-                                    if line.startswith('FN:'):
-                                        name = line[3:].strip()
-                                    elif line.startswith('TEL;'):
-                                        phone = line.split(':')[-1].strip()
-                                ctx.log_info(f"  контакт из VCF (ручной): name={name}, phone={phone}")
-                        except Exception as e:
-                            ctx.log_info(f"  ошибка парсинга VCF: {e}")
+                        ctx.log_info(f"  VCF найден, длина: {len(vcf_info)}")
+                        # Ручной парсинг VCF
+                        for line in vcf_info.split('\n'):
+                            if line.startswith('FN:'):
+                                name = line[3:].strip()
+                                ctx.log_info(f"    FN: {name}")
+                            elif line.startswith('TEL;') or line.startswith('TEL:'):
+                                phone = line.split(':')[-1].strip()
+                                ctx.log_info(f"    TEL: {phone}")
+                            elif line.startswith('EMAIL:'):
+                                email = line[6:].strip()
+                                ctx.log_info(f"    EMAIL: {email}")
 
-                    # max_info (контакт пользователя MAX) — только имя и ID
+                    # max_info (контакт пользователя MAX)
                     max_info = getattr(att.payload, 'max_info', None)
                     if max_info:
                         if not name:
@@ -254,6 +256,9 @@ class BotResponses:
                     'user_id': user_id_contact
                 }
 
+                ctx.log_info(
+                    f"  итоговый контакт: name={contact_data['name']}, phone={contact_data['phone']}, user_id={contact_data['user_id']}")
+
             elif isinstance(att, Sticker):
                 attachment_types.append("стикер")
                 ctx.log_info(f"  стикер (пока не обрабатывается)")
@@ -267,8 +272,13 @@ class BotResponses:
         if location_data:
             lat = location_data.get('lat')
             lon = location_data.get('lon')
+            address = location_data.get('address')
 
             response += f"\n📍 **Геолокация:**\n"
+            if address:
+                response += f"   🏠 Адрес: {address}\n"
+            else:
+                response += f"   🏠 Адрес: не удалось определить\n"
             response += f"   📐 Координаты: {lat}, {lon}\n"
 
             # Ссылки на карты
@@ -289,7 +299,7 @@ class BotResponses:
             response += f"   👤 Имя: {name}\n"
             if phone:
                 phone_str = str(phone)
-                # Форматируем российский номер
+                # Форматируем номер
                 if len(phone_str) == 11 and phone_str.startswith('7'):
                     phone_str = f"+{phone_str}"
                 response += f"   📞 Телефон: {phone_str}\n"
