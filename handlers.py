@@ -324,17 +324,28 @@ class BotResponses:
                     lon = getattr(att.payload, 'longitude', None)
 
                 if lat and lon:
+                    # Получаем текстовый адрес по координатам через Nominatim
+                    address = None
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+                            headers = {'User-Agent': 'MAX_Bot/1.0'}
+                            async with session.get(geocode_url, headers=headers) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    address = data.get('display_name')
+                                    if address:
+                                        ctx.log_info(f"  адрес получен: {address[:50]}...")
+                    except Exception as e:
+                        ctx.log_info(f"  не удалось получить адрес: {e}")
+
                     location_data = {
                         'lat': lat,
                         'lon': lon,
-                        'title': getattr(att, 'title', None) or (
-                            getattr(att.payload, 'title', None) if hasattr(att, 'payload') else None),
-                        'address': getattr(att, 'address', None) or (
-                            getattr(att.payload, 'address', None) if hasattr(att, 'payload') else None)
+                        'address': address
                     }
                     ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
-                else:
-                    ctx.log_info(f"  геолокация: не удалось получить координаты")
 
             elif isinstance(att, Contact):
                 attachment_types.append("контакт")
@@ -354,17 +365,21 @@ class BotResponses:
                         if last_name:
                             name = f"{name} {last_name}".strip()
                         user_id_contact = getattr(max_info, 'user_id', None)
-                        ctx.log_info(f"  контакт (max_info): name={name}, user_id={user_id_contact}")
+                        # ⭐️ Номер телефона может быть в max_info
+                        phone = getattr(max_info, 'phone_number', None) or getattr(max_info, 'phone', None)
+                        if phone:
+                            phone = str(phone)
+                        ctx.log_info(f"  контакт (max_info): name={name}, phone={phone}, user_id={user_id_contact}")
                     else:
                         # Обычный контакт с именем и телефоном
                         name = getattr(att.payload, 'name', '')
-                        phone = getattr(att.payload, 'phone', '')
+                        phone = getattr(att.payload, 'phone_number', None) or getattr(att.payload, 'phone', '')
                         email = getattr(att.payload, 'email', None)
                         ctx.log_info(f"  контакт: name={name}, phone={phone}, email={email}")
                 else:
                     # Если данные прямо в att
                     name = getattr(att, 'name', '')
-                    phone = getattr(att, 'phone', '')
+                    phone = getattr(att, 'phone_number', None) or getattr(att, 'phone', '')
                     ctx.log_info(f"  контакт (прямой): name={name}, phone={phone}")
 
                 contact_data = {
@@ -383,18 +398,17 @@ class BotResponses:
 
         response += f"📎 Вложения: {', '.join(attachment_types)}\n"
 
-        # Если есть геолокация — добавляем детальную информацию
+        # Если есть геолокация — добавляем детальную информацию с адресом
         if location_data:
             lat = location_data.get('lat')
             lon = location_data.get('lon')
-            title = location_data.get('title')
             address = location_data.get('address')
 
             response += f"\n📍 **Геолокация:**\n"
-            if title:
-                response += f"   📍 Название: {title}\n"
             if address:
                 response += f"   🏠 Адрес: {address}\n"
+            else:
+                response += f"   🏠 Адрес: не удалось определить\n"
             response += f"   📐 Координаты: {lat}, {lon}\n"
 
             # Ссылки на карты
@@ -405,7 +419,7 @@ class BotResponses:
 
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
-        # Если есть контакт — добавляем детальную информацию
+        # Если есть контакт — добавляем детальную информацию с телефоном
         if contact_data:
             name = contact_data.get('name', 'Не указано')
             phone = contact_data.get('phone', '')
@@ -415,7 +429,13 @@ class BotResponses:
             response += f"\n📇 **Контакт:**\n"
             response += f"   👤 Имя: {name}\n"
             if phone and phone != 'Не указан':
-                response += f"   📞 Телефон: {phone}\n"
+                # Форматируем номер телефона
+                phone_str = str(phone)
+                if len(phone_str) == 11 and phone_str.startswith('7'):
+                    phone_str = f"+{phone_str}"
+                response += f"   📞 Телефон: {phone_str}\n"
+            else:
+                response += f"   📞 Телефон: не указан\n"
             if email:
                 response += f"   📧 Email: {email}\n"
             if user_id_contact:
