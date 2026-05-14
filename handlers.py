@@ -319,16 +319,31 @@ class BotResponses:
                 if hasattr(att, 'payload') and att.payload:
                     lat = getattr(att.payload, 'latitude', None)
                     lon = getattr(att.payload, 'longitude', None)
-                    location_data = (lat, lon)
-                    ctx.log_info(f"  геолокация: {lat}, {lon}")
+                    # Получаем дополнительные данные, если есть
+                    title = getattr(att.payload, 'title', None)
+                    address = getattr(att.payload, 'address', None)
+                    location_data = {
+                        'lat': lat,
+                        'lon': lon,
+                        'title': title,
+                        'address': address
+                    }
+                    ctx.log_info(f"  геолокация: lat={lat}, lon={lon}, title={title}, address={address}")
 
             elif isinstance(att, Contact):
                 attachment_types.append("контакт")
                 if hasattr(att, 'payload') and att.payload:
                     name = getattr(att.payload, 'name', '')
                     phone = getattr(att.payload, 'phone', '')
-                    contact_data = (name, phone)
-                    ctx.log_info(f"  контакт: {name}, {phone}")
+                    email = getattr(att.payload, 'email', None)
+                    vcf_info = getattr(att.payload, 'vcf_info', None)
+                    contact_data = {
+                        'name': name,
+                        'phone': phone,
+                        'email': email,
+                        'vcf_info': vcf_info
+                    }
+                    ctx.log_info(f"  контакт: name={name}, phone={phone}, email={email}")
 
             elif isinstance(att, Sticker):
                 attachment_types.append("стикер")
@@ -339,24 +354,50 @@ class BotResponses:
 
         response += f"📎 Вложения: {', '.join(attachment_types)}\n"
 
-        # Если есть геолокация — отправляем как текст (или можно как вложение)
+        # Если есть геолокация — добавляем детальную информацию
         if location_data:
-            lat, lon = location_data
-            response += f"📍 Координаты: {lat}, {lon}\n"
-            # Ссылка на карту (можно использовать Яндекс.Карты или Google Maps)
-            maps_url = f"https://maps.google.com/?q={lat},{lon}"
-            response += f"🗺️ Карта: {maps_url}\n"
+            lat = location_data.get('lat')
+            lon = location_data.get('lon')
+            title = location_data.get('title')
+            address = location_data.get('address')
 
-        # Если есть контакт — отправляем как текст
+            response += f"\n📍 **Геолокация:**\n"
+            if title:
+                response += f"   📍 Название: {title}\n"
+            if address:
+                response += f"   🏠 Адрес: {address}\n"
+            response += f"   📐 Координаты: {lat}, {lon}\n"
+
+            # Ссылки на карты
+            google_maps = f"https://www.google.com/maps?q={lat},{lon}"
+            yandex_maps = f"https://yandex.ru/maps/?pt={lon},{lat}&z=15&l=map"
+            response += f"   🗺️ Google Maps: {google_maps}\n"
+            response += f"   🗺️ Яндекс.Карты: {yandex_maps}\n"
+
+            # Текущее время получения геолокации
+            response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
+
+        # Если есть контакт — добавляем детальную информацию
         if contact_data:
-            name, phone = contact_data
-            response += f"📞 Контакт: {name}\n"
+            name = contact_data.get('name', '')
+            phone = contact_data.get('phone', '')
+            email = contact_data.get('email', '')
+
+            response += f"\n📇 **Контакт:**\n"
+            response += f"   👤 Имя: {name}\n"
             if phone:
-                response += f"📱 Телефон: {phone}\n"
+                response += f"   📞 Телефон: {phone}\n"
+            if email:
+                response += f"   📧 Email: {email}\n"
+
+            # Если есть vcf, добавляем информацию
+            if contact_data.get('vcf_info'):
+                response += f"   📄 VCF: присутствует\n"
+
+            response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
         # Обработка аудио (требует скачивания)
         if need_download and audio_url:
-            # Показываем индикатор
             await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
             try:
@@ -389,7 +430,6 @@ class BotResponses:
 
         # Обработка фото/видео/файлов (без аудио)
         elif attachments_for_send:
-            # Показываем соответствующий индикатор
             if "видео" in attachment_types:
                 await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_VIDEO)
             elif "фото" in attachment_types:
@@ -415,11 +455,9 @@ class BotResponses:
             ctx.log_info("Ответ с геолокацией/контактом отправлен")
 
         else:
-            # Нет обработанных вложений — отправляем только текст
             await event.message.answer(response)
             ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
 
-        # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
         await context.set_state(None)
         await context.set_data({})
