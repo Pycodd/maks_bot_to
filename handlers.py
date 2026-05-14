@@ -316,34 +316,63 @@ class BotResponses:
 
             elif isinstance(att, Location):
                 attachment_types.append("геолокация")
-                if hasattr(att, 'payload') and att.payload:
+                # Координаты могут быть прямо в att или в payload
+                lat = getattr(att, 'latitude', None)
+                lon = getattr(att, 'longitude', None)
+                if lat is None and hasattr(att, 'payload') and att.payload:
                     lat = getattr(att.payload, 'latitude', None)
                     lon = getattr(att.payload, 'longitude', None)
-                    # Получаем дополнительные данные, если есть
-                    title = getattr(att.payload, 'title', None)
-                    address = getattr(att.payload, 'address', None)
+
+                if lat and lon:
                     location_data = {
                         'lat': lat,
                         'lon': lon,
-                        'title': title,
-                        'address': address
+                        'title': getattr(att, 'title', None) or (
+                            getattr(att.payload, 'title', None) if hasattr(att, 'payload') else None),
+                        'address': getattr(att, 'address', None) or (
+                            getattr(att.payload, 'address', None) if hasattr(att, 'payload') else None)
                     }
-                    ctx.log_info(f"  геолокация: lat={lat}, lon={lon}, title={title}, address={address}")
+                    ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
+                else:
+                    ctx.log_info(f"  геолокация: не удалось получить координаты")
 
             elif isinstance(att, Contact):
                 attachment_types.append("контакт")
+
+                name = None
+                phone = None
+                email = None
+                user_id_contact = None
+
+                # Пробуем получить данные из разных мест
                 if hasattr(att, 'payload') and att.payload:
-                    name = getattr(att.payload, 'name', '')
-                    phone = getattr(att.payload, 'phone', '')
-                    email = getattr(att.payload, 'email', None)
-                    vcf_info = getattr(att.payload, 'vcf_info', None)
-                    contact_data = {
-                        'name': name,
-                        'phone': phone,
-                        'email': email,
-                        'vcf_info': vcf_info
-                    }
-                    ctx.log_info(f"  контакт: name={name}, phone={phone}, email={email}")
+                    # Проверяем наличие max_info (контакт пользователя MAX)
+                    max_info = getattr(att.payload, 'max_info', None)
+                    if max_info:
+                        name = getattr(max_info, 'first_name', '')
+                        last_name = getattr(max_info, 'last_name', '')
+                        if last_name:
+                            name = f"{name} {last_name}".strip()
+                        user_id_contact = getattr(max_info, 'user_id', None)
+                        ctx.log_info(f"  контакт (max_info): name={name}, user_id={user_id_contact}")
+                    else:
+                        # Обычный контакт с именем и телефоном
+                        name = getattr(att.payload, 'name', '')
+                        phone = getattr(att.payload, 'phone', '')
+                        email = getattr(att.payload, 'email', None)
+                        ctx.log_info(f"  контакт: name={name}, phone={phone}, email={email}")
+                else:
+                    # Если данные прямо в att
+                    name = getattr(att, 'name', '')
+                    phone = getattr(att, 'phone', '')
+                    ctx.log_info(f"  контакт (прямой): name={name}, phone={phone}")
+
+                contact_data = {
+                    'name': name or 'Не указано',
+                    'phone': phone or 'Не указан',
+                    'email': email,
+                    'user_id': user_id_contact
+                }
 
             elif isinstance(att, Sticker):
                 attachment_types.append("стикер")
@@ -374,25 +403,23 @@ class BotResponses:
             response += f"   🗺️ Google Maps: {google_maps}\n"
             response += f"   🗺️ Яндекс.Карты: {yandex_maps}\n"
 
-            # Текущее время получения геолокации
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
         # Если есть контакт — добавляем детальную информацию
         if contact_data:
-            name = contact_data.get('name', '')
+            name = contact_data.get('name', 'Не указано')
             phone = contact_data.get('phone', '')
             email = contact_data.get('email', '')
+            user_id_contact = contact_data.get('user_id')
 
             response += f"\n📇 **Контакт:**\n"
             response += f"   👤 Имя: {name}\n"
-            if phone:
+            if phone and phone != 'Не указан':
                 response += f"   📞 Телефон: {phone}\n"
             if email:
                 response += f"   📧 Email: {email}\n"
-
-            # Если есть vcf, добавляем информацию
-            if contact_data.get('vcf_info'):
-                response += f"   📄 VCF: присутствует\n"
+            if user_id_contact:
+                response += f"   🆔 ID пользователя MAX: {user_id_contact}\n"
 
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
