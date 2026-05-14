@@ -17,154 +17,12 @@ from maxapi.types.attachments.sticker import Sticker
 from maxapi.types.attachments.video import Video
 
 
-async def send_audio_by_token(
-        audio_url: str,
-        chat_id: int,
-        bot_token: str,
-        caption: str = ""
-) -> bool:
-    """
-    Отправляет аудио/голосовое сообщение в MAX с подробным логированием.
-    """
-
-    print("=" * 70)
-    print("🔊🔊🔊 send_audio_by_token ВЫЗВАНА 🔊🔊🔊")
-    print(f"   audio_url: {audio_url[:100] if audio_url else 'None'}...")
-    print(f"   chat_id: {chat_id}")
-    print(f"   caption: {caption}")
-    print(f"   bot_token: {bot_token[:20] if bot_token else 'None'}...")
-    print("=" * 70)
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            # ========== ШАГ 1: ПОЛУЧАЕМ UPLOAD_URL ==========
-            print("\n📡 ШАГ 1: Запрашиваю upload_url у MAX API...")
-            print(f"   URL: https://platform-api.max.ru/uploads?type=audio")
-            print(f"   Headers: Authorization: {bot_token[:20]}...")
-
-            async with session.post(
-                    "https://platform-api.max.ru/uploads?type=audio",
-                    headers={"Authorization": bot_token}
-            ) as resp:
-                print(f"   Ответ от /uploads: status={resp.status}")
-
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    print(f"   ❌ ОШИБКА: status {resp.status}")
-                    print(f"   Текст ошибки: {error_text}")
-                    return False
-
-                upload_data = await resp.json()
-                print(f"   ✅ Получены данные: {upload_data}")
-
-                upload_url = upload_data.get('url')
-                new_token = upload_data.get('token')
-
-                print(f"   upload_url: {upload_url[:80] if upload_url else 'None'}...")
-                print(f"   new_token: {new_token[:40] if new_token else 'None'}...")
-
-                if not upload_url or not new_token:
-                    print("   ❌ ОШИБКА: Ответ не содержит url или token")
-                    return False
-
-                print("   ✅ upload_url и token получены успешно")
-
-            # ========== ШАГ 2: СКАЧИВАЕМ АУДИО ПО URL ==========
-            print(f"\n📡 ШАГ 2: Скачиваю аудио по URL...")
-            print(f"   URL для скачивания: {audio_url[:100]}...")
-
-            async with session.get(audio_url) as resp:
-                print(f"   Ответ на скачивание: status={resp.status}")
-                print(f"   Content-Type: {resp.headers.get('Content-Type', 'unknown')}")
-                print(f"   Content-Length: {resp.headers.get('Content-Length', 'unknown')}")
-
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    print(f"   ❌ ОШИБКА: Не удалось скачать аудио")
-                    print(f"   Статус: {resp.status}")
-                    print(f"   Текст: {error_text[:200]}")
-                    return False
-
-                audio_bytes = await resp.read()
-                print(f"   ✅ Аудио скачано успешно!")
-                print(f"   Размер: {len(audio_bytes)} байт")
-                print(f"   Первые 20 байт: {audio_bytes[:20] if len(audio_bytes) > 20 else audio_bytes}")
-
-            # ========== ШАГ 3: ЗАГРУЖАЕМ АУДИО НА СЕРВЕР ==========
-            print(f"\n📡 ШАГ 3: Загружаю аудио на сервер MAX...")
-            print(f"   URL загрузки: {upload_url[:80]}...")
-
-            data = aiohttp.FormData()
-            data.add_field('file', audio_bytes, filename='voice.ogg', content_type='audio/ogg')
-            print(f"   FormData создан: filename='voice.ogg', content_type='audio/ogg'")
-
-            async with session.post(upload_url, data=data) as upload_resp:
-                print(f"   Ответ на загрузку: status={upload_resp.status}")
-
-                if upload_resp.status not in (200, 201):
-                    text = await upload_resp.text()
-                    print(f"   ❌ ОШИБКА: Не удалось загрузить аудио")
-                    print(f"   Статус: {upload_resp.status}")
-                    print(f"   Текст: {text[:200]}")
-                    return False
-
-                print(f"   ✅ Аудио загружено на сервер MAX!")
-
-            # ========== ШАГ 4: ОТПРАВЛЯЕМ СООБЩЕНИЕ С АУДИО ==========
-            print(f"\n📡 ШАГ 4: Отправляю сообщение с аудио...")
-            print(f"   chat_id: {chat_id}")
-            print(f"   caption: {caption}")
-            print(f"   new_token: {new_token[:40]}...")
-
-            # Формируем payload для отправки
-            send_url = "https://platform-api.max.ru/messages"
-            attachment_obj = {
-                "type": "audio",
-                "payload": {"token": new_token}
-            }
-            payload = {
-                "chat_id": chat_id,
-                "text": caption,
-                "attachments": [attachment_obj]
-            }
-
-            print(f"   send_url: {send_url}")
-            print(f"   payload: {payload}")
-
-            async with session.post(
-                    send_url,
-                    headers={"Authorization": bot_token, "Content-Type": "application/json"},
-                    json=payload
-            ) as resp:
-                print(f"   Ответ на отправку: status={resp.status}")
-
-                if resp.status != 200:
-                    text = await resp.text()
-                    print(f"   ❌ ОШИБКА: Не удалось отправить сообщение с аудио")
-                    print(f"   Статус: {resp.status}")
-                    print(f"   Текст: {text}")
-                    return False
-
-                result = await resp.json()
-                print(f"   ✅ Аудио сообщение успешно отправлено!")
-                print(f"   Ответ от сервера: {result}")
-
-                print("\n" + "=" * 70)
-                print("🎉🎉🎉 АУДИО УСПЕШНО ОТПРАВЛЕНО! 🎉🎉🎉")
-                print("=" * 70)
-                return True
-
-    except aiohttp.ClientError as e:
-        print(f"\n❌❌❌ СЕТЕВАЯ ОШИБКА: {e}")
-        print(f"   Тип: {type(e).__name__}")
-        logging.exception(f"Сетевая ошибка при отправке аудио: {e}")
-        return False
-
-    except Exception as e:
-        print(f"\n❌❌❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
-        print(f"   Тип: {type(e).__name__}")
-        logging.exception(f"Критическая ошибка при отправке аудио: {e}")
-        return False
+# Импорты для работы с VCF
+try:
+    from maxapi.utils.vcf import parse_vcf_info
+    _has_vcf_parser = True
+except ImportError:
+    _has_vcf_parser = False
 
 
 class WaitingStates(StatesGroup):
@@ -314,37 +172,33 @@ class BotResponses:
                         )
                         ctx.log_info(f"  файл добавлено (токен: {token[:20]}...)")
 
+
             elif isinstance(att, Location):
+
                 attachment_types.append("геолокация")
+
                 # Координаты могут быть прямо в att или в payload
+
                 lat = getattr(att, 'latitude', None)
+
                 lon = getattr(att, 'longitude', None)
+
                 if lat is None and hasattr(att, 'payload') and att.payload:
                     lat = getattr(att.payload, 'latitude', None)
+
                     lon = getattr(att.payload, 'longitude', None)
 
                 if lat and lon:
-                    # Получаем текстовый адрес по координатам через Nominatim
-                    address = None
-                    try:
-                        import aiohttp
-                        async with aiohttp.ClientSession() as session:
-                            geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
-                            headers = {'User-Agent': 'MAX_Bot/1.0'}
-                            async with session.get(geocode_url, headers=headers) as resp:
-                                if resp.status == 200:
-                                    data = await resp.json()
-                                    address = data.get('display_name')
-                                    if address:
-                                        ctx.log_info(f"  адрес получен: {address[:50]}...")
-                    except Exception as e:
-                        ctx.log_info(f"  не удалось получить адрес: {e}")
+                    # Сохраняем только координаты (без попытки получить адрес)
 
                     location_data = {
+
                         'lat': lat,
-                        'lon': lon,
-                        'address': address
+
+                        'lon': lon
+
                     }
+
                     ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
 
             elif isinstance(att, Contact):
@@ -355,36 +209,47 @@ class BotResponses:
                 email = None
                 user_id_contact = None
 
-                # Пробуем получить данные из разных мест
                 if hasattr(att, 'payload') and att.payload:
-                    # Проверяем наличие max_info (контакт пользователя MAX)
+                    # 🔥 ИЗВЛЕКАЕМ ТЕЛЕФОН ИЗ VCF
+                    vcf_info = getattr(att.payload, 'vcf_info', None)
+                    if vcf_info:
+                        try:
+                            if _has_vcf_parser:
+                                vcf_data = parse_vcf_info(vcf_info)
+                                name = vcf_data.full_name
+                                if vcf_data.phones:
+                                    phone = vcf_data.phones[0]
+                                ctx.log_info(f"  контакт из VCF (parse_vcf_info): name={name}, phone={phone}")
+                            else:
+                                # Ручной парсинг VCF
+                                for line in vcf_info.split('\n'):
+                                    if line.startswith('FN:'):
+                                        name = line[3:].strip()
+                                    elif line.startswith('TEL;'):
+                                        phone = line.split(':')[-1].strip()
+                                ctx.log_info(f"  контакт из VCF (ручной): name={name}, phone={phone}")
+                        except Exception as e:
+                            ctx.log_info(f"  ошибка парсинга VCF: {e}")
+
+                    # max_info (контакт пользователя MAX) — только имя и ID
                     max_info = getattr(att.payload, 'max_info', None)
                     if max_info:
-                        name = getattr(max_info, 'first_name', '')
-                        last_name = getattr(max_info, 'last_name', '')
-                        if last_name:
-                            name = f"{name} {last_name}".strip()
+                        if not name:
+                            name = getattr(max_info, 'first_name', '')
+                            last_name = getattr(max_info, 'last_name', '')
+                            if last_name:
+                                name = f"{name} {last_name}".strip()
                         user_id_contact = getattr(max_info, 'user_id', None)
-                        # ⭐️ Номер телефона может быть в max_info
-                        phone = getattr(max_info, 'phone_number', None) or getattr(max_info, 'phone', None)
-                        if phone:
-                            phone = str(phone)
-                        ctx.log_info(f"  контакт (max_info): name={name}, phone={phone}, user_id={user_id_contact}")
-                    else:
-                        # Обычный контакт с именем и телефоном
-                        name = getattr(att.payload, 'name', '')
-                        phone = getattr(att.payload, 'phone_number', None) or getattr(att.payload, 'phone', '')
-                        email = getattr(att.payload, 'email', None)
-                        ctx.log_info(f"  контакт: name={name}, phone={phone}, email={email}")
+                        ctx.log_info(f"  max_info: name={name}, user_id={user_id_contact}")
                 else:
                     # Если данные прямо в att
                     name = getattr(att, 'name', '')
-                    phone = getattr(att, 'phone_number', None) or getattr(att, 'phone', '')
+                    phone = getattr(att, 'phone', '')
                     ctx.log_info(f"  контакт (прямой): name={name}, phone={phone}")
 
                 contact_data = {
                     'name': name or 'Не указано',
-                    'phone': phone or 'Не указан',
+                    'phone': phone or None,
                     'email': email,
                     'user_id': user_id_contact
                 }
@@ -398,17 +263,12 @@ class BotResponses:
 
         response += f"📎 Вложения: {', '.join(attachment_types)}\n"
 
-        # Если есть геолокация — добавляем детальную информацию с адресом
+        # ========== ГЕОЛОКАЦИЯ ==========
         if location_data:
             lat = location_data.get('lat')
             lon = location_data.get('lon')
-            address = location_data.get('address')
 
             response += f"\n📍 **Геолокация:**\n"
-            if address:
-                response += f"   🏠 Адрес: {address}\n"
-            else:
-                response += f"   🏠 Адрес: не удалось определить\n"
             response += f"   📐 Координаты: {lat}, {lon}\n"
 
             # Ссылки на карты
@@ -419,31 +279,27 @@ class BotResponses:
 
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
-        # Если есть контакт — добавляем детальную информацию с телефоном
+        # ========== КОНТАКТ ==========
         if contact_data:
             name = contact_data.get('name', 'Не указано')
-            phone = contact_data.get('phone', '')
-            email = contact_data.get('email', '')
+            phone = contact_data.get('phone')
             user_id_contact = contact_data.get('user_id')
 
             response += f"\n📇 **Контакт:**\n"
             response += f"   👤 Имя: {name}\n"
-            if phone and phone != 'Не указан':
-                # Форматируем номер телефона
+            if phone:
                 phone_str = str(phone)
+                # Форматируем российский номер
                 if len(phone_str) == 11 and phone_str.startswith('7'):
                     phone_str = f"+{phone_str}"
                 response += f"   📞 Телефон: {phone_str}\n"
             else:
-                response += f"   📞 Телефон: не указан\n"
-            if email:
-                response += f"   📧 Email: {email}\n"
+                response += f"   📞 Телефон: не предоставлен\n"
             if user_id_contact:
                 response += f"   🆔 ID пользователя MAX: {user_id_contact}\n"
-
             response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
-        # Обработка аудио (требует скачивания)
+        # ========== АУДИО ==========
         if need_download and audio_url:
             await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
 
@@ -475,7 +331,7 @@ class BotResponses:
                 ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
                 await event.message.answer(response + f"\n\n⚠️ Ошибка: {e}")
 
-        # Обработка фото/видео/файлов (без аудио)
+        # ========== ФОТО, ВИДЕО, ФАЙЛЫ ==========
         elif attachments_for_send:
             if "видео" in attachment_types:
                 await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_VIDEO)
@@ -495,7 +351,7 @@ class BotResponses:
                 ctx.log_info(f"❌ Ошибка при отправке: {e}")
                 await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
 
-        # Если только геолокация и/или контакт (без медиа)
+        # ========== ТОЛЬКО ГЕОЛОКАЦИЯ/КОНТАКТ ==========
         elif location_data or contact_data:
             await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
             await event.message.answer(response)
@@ -505,6 +361,7 @@ class BotResponses:
             await event.message.answer(response)
             ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
 
+        # Сбрасываем состояние
         ctx.log_info("Сброс состояния waiting_for_message")
         await context.set_state(None)
         await context.set_data({})
