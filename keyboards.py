@@ -31,3 +31,23 @@ class Keyboards:
         builder.row(RequestGeoLocationButton(text="Геолокация"))
 
         return builder.as_markup(), "📋 Главное меню:"
+
+    @staticmethod
+    def reply_keyboard():
+        """
+        Универсальная клавиатура для ответов бота.
+        Возвращает: клавиатура (можно использовать в attachments)
+        """
+        builder = InlineKeyboardBuilder()
+
+        builder.row(
+            CallbackButton(text="⚙️ Настройки", data="settings"),
+            CallbackButton(text="ℹ️ О боте", data="about")
+        )
+        builder.row(CallbackButton(text="✉️ Написать сообщение", data="write_message"))
+        builder.row(
+            RequestContactButton(text="📞 Отправить контакт"),
+            RequestGeoLocationButton(text="📍 Геолокация")
+        )
+
+        return builder.as_markup()
