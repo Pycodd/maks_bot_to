@@ -28,26 +28,8 @@ class Keyboards:
         )
         builder.row(CallbackButton(text="✉️ Написать сообщение", payload="write_message"))
         builder.row(RequestContactButton(text="📞 Отправить контакт"))
-        builder.row(RequestGeoLocationButton(text="📍 Геолокация"))
+        builder.row(RequestGeoLocationButton(text="Геолокация"))
 
         return builder.as_markup(), "📋 Главное меню:"
 
-    @staticmethod
-    def reply_keyboard():
-        """
-        Универсальная клавиатура для ответов бота.
-        Возвращает: клавиатура (можно использовать в attachments)
-        """
-        builder = InlineKeyboardBuilder()
 
-        builder.row(
-            CallbackButton(text="⚙️ Настройки", payload="settings"),
-            CallbackButton(text="ℹ️ О боте", payload="about")
-        )
-        builder.row(CallbackButton(text="✉️ Написать сообщение", payload="write_message"))
-        builder.row(
-            RequestContactButton(text="📞 Отправить контакт"),
-            RequestGeoLocationButton(text="📍 Геолокация")
-        )
-
-        return builder.as_markup()

@@ -1,5 +1,5 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, Keyboards, AttachmentUpload, AttachmentPayload, UploadType, asyncio, pytz)
+                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType, asyncio, pytz)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -101,13 +101,11 @@ class BotResponses:
             f"👤 Отправитель: {user_name} (ID: {user_id})\n"
         )
 
-        reply_keyboard = Keyboards.reply_keyboard()
-
         if text:
             response += f"📝 Текст:\n{text}\n"
 
         if not attachments:
-            await event.message.answer(response, attachments=[reply_keyboard])
+            await event.message.answer(response)
             await context.set_state(None)
             return
 
@@ -286,7 +284,7 @@ class BotResponses:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=response,
-                    attachments=attachments_for_send + [reply_keyboard]
+                    attachments=attachments_for_send
                 )
                 ctx.log_info(f"✅ Сообщение отправлено с {len(attachments_for_send)} вложениями")
             except Exception as e:
@@ -300,7 +298,7 @@ class BotResponses:
             ctx.log_info("Ответ с геолокацией отправлен")
 
         else:
-            await event.message.answer(response, attachments=[reply_keyboard])
+            await event.message.answer(response)
             ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
 
         # Сбрасываем состояние
