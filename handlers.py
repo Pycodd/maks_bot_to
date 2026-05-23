@@ -1,5 +1,5 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, AttachmentUpload, AttachmentPayload, UploadType, asyncio, pytz)
+                     File, Sticker, Location, Contact, AttachmentUpload,Keyboards, AttachmentPayload, UploadType, asyncio, pytz)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -92,7 +92,7 @@ class BotResponses:
         if not attachments and not text:
             await context.set_state(None)
             return
-
+        default_kb = Keyboards.main_menu_keyboard()
         # Формируем базовый ответ
         now = datetime.now(TZ_VOLGOGRAD)
         response = (
@@ -105,7 +105,7 @@ class BotResponses:
             response += f"📝 Текст:\n{text}\n"
 
         if not attachments:
-            await event.message.answer(response)
+            await event.message.answer(response, attachments=[default_kb])
             await context.set_state(None)
             return
 
@@ -261,7 +261,7 @@ class BotResponses:
                             await bot.send_message(
                                 chat_id=chat_id,
                                 text=response,
-                                attachments=[media]
+                                attachments=[media] + [default_kb]
                             )
                             ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
                         else:
@@ -284,7 +284,7 @@ class BotResponses:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=response,
-                    attachments=attachments_for_send
+                    attachments=attachments_for_send + [default_kb]
                 )
                 ctx.log_info(f"✅ Сообщение отправлено с {len(attachments_for_send)} вложениями")
             except Exception as e:
@@ -294,7 +294,7 @@ class BotResponses:
         # ========== ТОЛЬКО ГЕОЛОКАЦИЯ ==========
         elif location_data:
             await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
-            await event.message.answer(response)
+            await event.message.answer(response, attachments=[default_kb])
             ctx.log_info("Ответ с геолокацией отправлен")
 
         else:

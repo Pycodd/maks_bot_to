@@ -73,12 +73,38 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
 #     ctx.log_info("Получено сообщение (echo)")
 
 
-async def main():
+# async def main():
+#     """Запуск бота в режиме WEBHOOK"""
+#     logging.info(f"🔗 Регистрирую вебхук: {WEBHOOK_URL}")
+#     await bot.subscribe_webhook(url=WEBHOOK_URL, secret=WEBHOOK_SECRET)
+#
+#     # 3. Запускаем встроенный веб-сервер maxapi
+#     logging.info(f"🚀 Запуск вебхук-сервера на порту {PORT}")
+#     await dp.handle_webhook(
+#         bot=bot,
+#         host='0.0.0.0',
+#         port=PORT,
+#         path=WEBHOOK_PATH,
+#         secret=WEBHOOK_SECRET
+#     )
+#
+#
+# if __name__ == "__main__":
+#     asyncio.run(main())
+
+MODE_WEBHOOK = True
+
+
+# Режим 2: LONG POLLING (для разработки/тестирования)
+# MODE_WEBHOOK = False, True
+# ============================================================
+
+
+async def main_webhook():
     """Запуск бота в режиме WEBHOOK"""
     logging.info(f"🔗 Регистрирую вебхук: {WEBHOOK_URL}")
     await bot.subscribe_webhook(url=WEBHOOK_URL, secret=WEBHOOK_SECRET)
 
-    # 3. Запускаем встроенный веб-сервер maxapi
     logging.info(f"🚀 Запуск вебхук-сервера на порту {PORT}")
     await dp.handle_webhook(
         bot=bot,
@@ -87,6 +113,32 @@ async def main():
         path=WEBHOOK_PATH,
         secret=WEBHOOK_SECRET
     )
+
+
+async def main_polling():
+    """Запуск бота в режиме LONG POLLING"""
+    logging.info("🚀 Запуск бота в режиме Long Polling")
+
+    try:
+        await bot.delete_webhook()
+        logging.info("✅ Вебхук удалён (если был)")
+    except Exception as e:
+        logging.warning(f"Не удалось удалить вебхук: {e}")
+    await dp.start_polling(bot)
+
+
+async def main():
+    """Универсальный запуск бота"""
+    if MODE_WEBHOOK:
+        logging.info("=" * 50)
+        logging.info("🔵 ЗАПУСК В РЕЖИМЕ WEBHOOK")
+        logging.info("=" * 50)
+        await main_webhook()
+    else:
+        logging.info("=" * 50)
+        logging.info("🟢 ЗАПУСК В РЕЖИМЕ LONG POLLING")
+        logging.info("=" * 50)
+        await main_polling()
 
 
 if __name__ == "__main__":
