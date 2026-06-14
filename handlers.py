@@ -1,5 +1,6 @@
 from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, AttachmentUpload,Keyboards, AttachmentPayload, UploadType, asyncio, pytz)
+                     File, Sticker, Location, Contact, AttachmentUpload,Keyboards,
+                     AttachmentPayload, UploadType, asyncio, pytz)
 from utils import EventContext, log_response_detailed
 from maxapi.context import StatesGroup, State
 from maxapi.context import MemoryContext
@@ -92,8 +93,7 @@ class BotResponses:
         if not attachments and not text:
             await context.set_state(None)
             return
-        default_kb = Keyboards.main_menu_keyboard()
-        # Формируем базовый ответ
+        default_kb = Keyboards.ten_buttons_horizontal()
         now = datetime.now(TZ_VOLGOGRAD)
         response = (
             f"✅ Получено сообщение!\n"
@@ -170,7 +170,6 @@ class BotResponses:
 
             elif isinstance(att, Location):
                 attachment_types.append("геолокация")
-                # Координаты могут быть прямо в att или в payload
                 lat = getattr(att, 'latitude', None)
                 lon = getattr(att, 'longitude', None)
                 if lat is None and hasattr(att, 'payload') and att.payload:
@@ -178,12 +177,10 @@ class BotResponses:
                     lon = getattr(att.payload, 'longitude', None)
 
                 if lat and lon:
-                    # Получаем адрес через Nominatim (OpenStreetMap)
                     address = None
                     try:
                         import aiohttp
                         async with aiohttp.ClientSession() as session:
-                            # Nominatim требует User-Agent
                             headers = {'User-Agent': 'MAX_Bot/1.0 (https://bothost.ru)'}
                             url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
                             async with session.get(url, headers=headers) as resp:
@@ -205,7 +202,6 @@ class BotResponses:
                     ctx.log_info(f"  геолокация: lat={lat}, lon={lon}")
 
             elif isinstance(att, Contact):
-                # ⚠️ КОНТАКТЫ ИГНОРИРУЮТСЯ
                 attachment_types.append("контакт (игнорирован)")
                 ctx.log_info(f"  контакт получен, но игнорируется")
 
@@ -231,7 +227,6 @@ class BotResponses:
                 response += f"   🏠 Адрес: не удалось определить\n"
             response += f"   📐 Координаты: {lat}, {lon}\n"
 
-            # Ссылки на карты
             google_maps = f"https://www.google.com/maps?q={lat},{lon}"
             yandex_maps = f"https://yandex.ru/maps/?pt={lon},{lat}&z=15&l=map"
             response += f"   🗺️ Google Maps: {google_maps}\n"

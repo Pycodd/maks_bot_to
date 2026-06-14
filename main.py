@@ -2,8 +2,8 @@ from imports import  (asyncio, logging, bot, dp, MessageCreated, MessageCallback
                       CommandStart, Command, Keyboards, logging_conf, LoggingMiddleware,
                       main_router, EventContext, log_response_detailed, CallbackHandlers,
                       BotResponses, WaitingStates, os, WEBHOOK_SECRET, WEBHOOK_URL, PORT, WEBHOOK_PATH,
-                      BASE_URL, BOTHOST_DOMAIN )
-from maxapi.context import MemoryContext
+                      BASE_URL, BOTHOST_DOMAIN, populate_initial_data, init_db, MemoryContext )
+
 logging_conf()
 callback_handler = CallbackHandlers()
 
@@ -55,13 +55,12 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
     ctx = await EventContext.from_event(event)
     user_name = event.message.sender.first_name or f"User_{ctx.user_id}"
 
-    # Передаем bot в метод
     await BotResponses.format_received_message(
         event=event,
         context=context,
         user_name=user_name,
         user_id=ctx.user_id,
-        bot=bot  # <-- передаем bot
+        bot=bot
     )
 
 
@@ -92,7 +91,7 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
 # if __name__ == "__main__":
 #     asyncio.run(main())
 
-MODE_WEBHOOK = True
+MODE_WEBHOOK = False
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)
@@ -142,4 +141,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    init_db()
+    populate_initial_data()
     asyncio.run(main())

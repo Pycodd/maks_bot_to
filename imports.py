@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 import datetime
 from datetime import datetime
 import pytz
+
 """ Сторонние библиотеки """
 from dotenv import (
     load_dotenv
@@ -53,9 +54,18 @@ from maxapi.types import (
 
 )
 
-from maxapi.types.attachments.upload import AttachmentUpload, AttachmentPayload
-from maxapi.enums.upload_type import UploadType
+""" Импорты MaxAPI types.attachments.upload """
+from maxapi.types.attachments.upload import (
+    AttachmentUpload,
+    AttachmentPayload
+)
 
+""" Импорты MaxAPI enums.upload_type """
+from maxapi.enums.upload_type import (
+    UploadType
+)
+
+""" Импорты MaxAPI types.attachments """
 from maxapi.types.attachments.audio import Audio
 from maxapi.types.attachments.video import Video
 from maxapi.types.attachments.image import Image
@@ -63,6 +73,9 @@ from maxapi.types.attachments.file import File
 from maxapi.types.attachments.sticker import Sticker
 from maxapi.types.attachments.location import Location
 from maxapi.types.attachments.contact import Contact
+
+""" Импорты MaxAPI context """
+from maxapi.context import MemoryContext
 
 """ Импорты модуля config """
 from config import (
@@ -98,6 +111,9 @@ from handlers import (
     WaitingStates
 )
 
+""" Импорты модуля handlers database"""
+from database import populate_initial_data, init_db
+
 __all__ = [
     'os', 're', 'time', 'json', 'asyncio', 'logging', 'load_dotenv',
     'Callable', 'Awaitable', 'Dict', 'Any', 'Optional', 'List', 'Union',
@@ -109,5 +125,6 @@ __all__ = [
     'log_response_detailed', 'BotResponses', 'WaitingStates', 'Audio', 'Video',
     'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL',
     'PORT', 'request', 'jsonify', 'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN',
-    'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'pytz', 'Flask'
+    'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'pytz', 'Flask', 'populate_initial_data',
+    'init_db', 'MemoryContext'
 ]
