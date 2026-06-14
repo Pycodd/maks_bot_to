@@ -93,7 +93,7 @@ class BotResponses:
         if not attachments and not text:
             await context.set_state(None)
             return
-        default_kb = Keyboards.ten_buttons_horizontal()
+        default_kb = Keyboards.main_menu_keyboard()
         now = datetime.now(TZ_VOLGOGRAD)
         response = (
             f"✅ Получено сообщение!\n"
