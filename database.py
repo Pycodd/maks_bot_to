@@ -6,10 +6,9 @@ from pathlib import Path
 def get_db_path():
     """Определяет путь к базе данных с учётом окружения"""
 
-    # 1. DATA_DIR от BotHost (рекомендованный способ)
-    data_dir = os.getenv("DATA_DIR")
+    # 1. DATA_DIR от BotHost (с значением по умолчанию)
+    data_dir = os.getenv('DATA_DIR', '/app/data')  # ← добавили значение по умолчанию
     if data_dir:
-        # Убеждаемся, что папка существует
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         return Path(data_dir) / "to_bot.db"
 
