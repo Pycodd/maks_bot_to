@@ -29,3 +29,9 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Данные и базы данных
+data/
+*.db
+*.sqlite
+*.sqlite3
