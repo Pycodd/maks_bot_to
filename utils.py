@@ -1,6 +1,5 @@
-from imports import logging, json, time, List, Optional, Any, Callable, asyncio
+from imports import (logging, json, time, List, Optional, Any, Callable, asyncio)
 from dataclasses import dataclass
-
 
 def _get_chat_id(event) -> int:
     """

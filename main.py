@@ -1,9 +1,7 @@
-from imports import  (asyncio, logging, bot, dp, MessageCreated, MessageCallback,
-                      CommandStart, Command, Keyboards, logging_conf, LoggingMiddleware,
-                      main_router, EventContext, log_response_detailed, CallbackHandlers,
-                      BotResponses, WaitingStates, os, WEBHOOK_SECRET, WEBHOOK_URL, PORT, WEBHOOK_PATH,
-                      BASE_URL, BOTHOST_DOMAIN, populate_initial_data, init_db, MemoryContext, MessageHandlers,
-                      MessageCallback )
+from imports import  (asyncio, logging, bot, dp, MessageCreated, CommandStart, Command, Keyboards, logging_conf,
+                      LoggingMiddleware, main_router, EventContext, log_response_detailed, CallbackHandlers,
+                      BotResponses, WaitingStates, WEBHOOK_SECRET, WEBHOOK_URL, PORT, WEBHOOK_PATH,
+                      populate_initial_data, init_db, MemoryContext, MessageHandlers, MessageCallback)
 
 logging_conf()
 callback_handler = CallbackHandlers()
@@ -92,7 +90,7 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
 # if __name__ == "__main__":
 #     asyncio.run(main())
 
-MODE_WEBHOOK = True
+MODE_WEBHOOK = False
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)

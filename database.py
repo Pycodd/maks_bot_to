@@ -1,6 +1,4 @@
-import sqlite3
-import os
-from pathlib import Path
+from imports import (sqlite3, os, Path)
 
 
 def get_db_path():

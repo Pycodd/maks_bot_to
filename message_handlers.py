@@ -1,18 +1,6 @@
-from imports import (MessageCallback, MessageCreated, Audio, Video, Image,
-                     File, Sticker, Location, Contact, AttachmentUpload,Keyboards,
-                     AttachmentPayload, UploadType, asyncio, pytz, WaitingStates)
-from utils import EventContext, log_response_detailed
-from maxapi.context import StatesGroup, State
-from maxapi.context import MemoryContext
-from datetime import datetime
-from maxapi.types import Attachment
-from maxapi.enums.attachment import AttachmentType
-import aiohttp
-import logging
-from io import BytesIO
-from maxapi.enums.sender_action import SenderAction
-import aiohttp
-from maxapi.types.input_media import InputMediaBuffer
+from imports import (MessageCreated, Audio, Video, Image, File, Sticker, Location, Contact, AttachmentUpload,
+                     Keyboards, AttachmentPayload, UploadType, pytz, MemoryContext, SenderAction, aiohttp,
+                     InputMediaBuffer, datetime, EventContext)
 
 
 # Импорты для работы с VCF
@@ -22,7 +10,6 @@ try:
 except ImportError:
     _has_vcf_parser = False
 
-# Часовой пояс Волгограда
 TZ_VOLGOGRAD = pytz.timezone('Europe/Volgograd')
 
 

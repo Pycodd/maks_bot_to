@@ -1,9 +1,15 @@
 """ Стандартные библиотеки Python """
 import os, re, time, json, asyncio, logging
-from flask import Flask, request, jsonify
 import datetime
 from datetime import datetime
+from dataclasses import dataclass
+import sqlite3
+from pathlib import Path
+
+""" Сторонние библиотеки """
 import pytz
+import aiohttp
+from flask import Flask, request, jsonify
 
 """ Сторонние библиотеки """
 from dotenv import (
@@ -60,6 +66,11 @@ from maxapi.types.attachments.upload import (
     AttachmentPayload
 )
 
+""" Импорты MaxAPI types.input_media """
+from maxapi.types.input_media import (
+    InputMediaBuffer
+)
+
 """ Импорты MaxAPI enums.upload_type """
 from maxapi.enums.upload_type import (
     UploadType
@@ -75,7 +86,15 @@ from maxapi.types.attachments.location import Location
 from maxapi.types.attachments.contact import Contact
 
 """ Импорты MaxAPI context """
-from maxapi.context import MemoryContext
+from maxapi.context import (
+    MemoryContext,
+    StatesGroup,
+    State
+)
+
+""" Импорты MaxAPI enums """
+from maxapi.enums.sender_action import SenderAction
+
 
 """ Импорты модуля config """
 from config import (
@@ -105,16 +124,16 @@ from keyboards import (
 )
 
 """ Импорты модуля handlers """
-from handlers import (
+from responses import (
     BotResponses
 )
 
-""" Импорты модуля handlers """
+""" Импорты модуля callback_handlers """
 from callback_handlers import (
     CallbackHandlers
 )
 
-""" Импорты модуля handlers """
+""" Импорты модуля states """
 from states import (
     WaitingStates
 )
@@ -125,7 +144,10 @@ from message_handlers import (
 )
 
 """ Импорты модуля handlers database"""
-from database import populate_initial_data, init_db
+from database import (
+    populate_initial_data,
+    init_db
+)
 
 __all__ = [
     'os', 're', 'time', 'json', 'asyncio', 'logging', 'load_dotenv',
@@ -139,5 +161,6 @@ __all__ = [
     'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL',
     'PORT', 'request', 'jsonify', 'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN',
     'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'pytz', 'Flask', 'populate_initial_data',
-    'init_db', 'MemoryContext', 'MessageHandlers'
+    'init_db', 'MemoryContext', 'MessageHandlers', 'SenderAction', 'aiohttp', 'InputMediaBuffer',
+    'State', 'StatesGroup', 'dataclass', 'sqlite3', 'Path'
 ]
