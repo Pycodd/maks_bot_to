@@ -106,9 +106,22 @@ from keyboards import (
 
 """ Импорты модуля handlers """
 from handlers import (
-    CallbackHandlers,
-    BotResponses,
+    BotResponses
+)
+
+""" Импорты модуля handlers """
+from callback_handlers import (
+    CallbackHandlers
+)
+
+""" Импорты модуля handlers """
+from states import (
     WaitingStates
+)
+
+""" Импорты модуля handlers """
+from message_handlers import (
+    MessageHandlers
 )
 
 """ Импорты модуля handlers database"""
@@ -126,5 +139,5 @@ __all__ = [
     'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL',
     'PORT', 'request', 'jsonify', 'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN',
     'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'pytz', 'Flask', 'populate_initial_data',
-    'init_db', 'MemoryContext'
+    'init_db', 'MemoryContext', 'MessageHandlers'
 ]
