@@ -92,7 +92,7 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
 # if __name__ == "__main__":
 #     asyncio.run(main())
 
-MODE_WEBHOOK = False
+MODE_WEBHOOK = True
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)
