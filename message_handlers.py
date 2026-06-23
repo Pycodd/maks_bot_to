@@ -3,7 +3,6 @@ from imports import (MessageCreated, Audio, Video, Image, File, Sticker, Locatio
                      InputMediaBuffer, datetime, EventContext)
 
 
-# Импорты для работы с VCF
 try:
     from maxapi.utils.vcf import parse_vcf_info
     _has_vcf_parser = True
@@ -28,11 +27,7 @@ class MessageHandlers:
             user_id: int,
             bot
     ):
-        """
-        Отправляет обратно полученное сообщение.
-        Поддерживает фото, видео, аудио, файлы, геолокацию.
-        Контакты не обрабатываются.
-        """
+
         ctx = await EventContext.from_event(event)
         ctx.log_info("format_received_message ВЫЗВАНА")
 
@@ -60,12 +55,10 @@ class MessageHandlers:
             await context.set_state(None)
             return
 
-        # Обрабатываем вложения
         result = await MessageHandlers._process_attachments(attachments, ctx)
 
         response += f"📎 Вложения: {', '.join(result['attachment_types'])}\n"
 
-        # Отправляем в зависимости от типа вложения
         if result['location_data']:
             await MessageHandlers._handle_location(
                 event=event,
@@ -101,7 +94,6 @@ class MessageHandlers:
             await event.message.answer(response)
             ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
 
-        # Сбрасываем состояние
         await context.set_state(None)
         await context.set_data({})
         ctx.log_info("format_received_message ЗАВЕРШЕНА")

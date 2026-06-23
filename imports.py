@@ -6,12 +6,14 @@ from dataclasses import dataclass
 import sqlite3
 from pathlib import Path
 
-""" Сторонние библиотеки """
+""" Сторонние библиотеки Python """
 import pytz
 import aiohttp
-from flask import Flask, request, jsonify
+from flask import (
+    Flask, request, jsonify
+)
 
-""" Сторонние библиотеки """
+""" Импорты dotenv """
 from dotenv import (
     load_dotenv
 )

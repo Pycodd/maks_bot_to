@@ -63,33 +63,6 @@ async def waiting_message_handler(event: MessageCreated, context: MemoryContext)
     )
 
 
-# # Дополнительный обработчик для диагностики (опционально)
-# @main_router.message_created()
-# async def echo_all(event):
-#     """Логирует все входящие сообщения (для отладки)"""
-#     ctx = await EventContext.from_event(event)
-#     ctx.log_info("Получено сообщение (echo)")
-
-
-# async def main():
-#     """Запуск бота в режиме WEBHOOK"""
-#     logging.info(f"🔗 Регистрирую вебхук: {WEBHOOK_URL}")
-#     await bot.subscribe_webhook(url=WEBHOOK_URL, secret=WEBHOOK_SECRET)
-#
-#     # 3. Запускаем встроенный веб-сервер maxapi
-#     logging.info(f"🚀 Запуск вебхук-сервера на порту {PORT}")
-#     await dp.handle_webhook(
-#         bot=bot,
-#         host='0.0.0.0',
-#         port=PORT,
-#         path=WEBHOOK_PATH,
-#         secret=WEBHOOK_SECRET
-#     )
-#
-#
-# if __name__ == "__main__":
-#     asyncio.run(main())
-
 MODE_WEBHOOK = False
 
 
