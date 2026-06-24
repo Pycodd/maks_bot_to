@@ -1,41 +1,27 @@
 from imports import  (asyncio, logging, bot, dp, MessageCreated, CommandStart, Command, Keyboards, logging_conf,
-                      LoggingMiddleware, main_router, EventContext, log_response_detailed, CallbackHandlers,
+                      LoggingMiddleware, main_router, EventContext, log_response_detailed,
                       BotResponses, WaitingStates, WEBHOOK_SECRET, WEBHOOK_URL, PORT, WEBHOOK_PATH,
-                      populate_initial_data, init_db, MemoryContext, MessageHandlers, MessageCallback)
+                      populate_initial_data, init_db, MemoryContext, MessageHandlers, MessageCallback, RegistrationStates, TextFormat)
+from callback_handlers import (
+    CallbackHandlers
+)
+
+from test_handlers import *
 
 logging_conf()
 callback_handler = CallbackHandlers()
 
-
+# ========== ОБРАБОТЧИК /start ==========
 @main_router.message_created(CommandStart(), LoggingMiddleware())
-async def start(event: MessageCreated):
+async def start(event: MessageCreated, context: MemoryContext):
+    """Обработчик команды /start — только собирает данные и передаёт в callback_handlers."""
     ctx = await EventContext.from_event(event)
     ctx.log_info("вызвал /start")
 
-    response = BotResponses.greeting()
-    await event.message.answer(response)
+    user_name = event.message.sender.first_name or "Пользователь"
 
-    log_response_detailed(
-        chat_id=ctx.chat_id,
-        response_text=response,
-        reply_to=ctx.message_mid if ctx.message_mid else None
-    )
-
-
-@main_router.message_created(Command("menu"), LoggingMiddleware())
-async def menu(event: MessageCreated):
-    ctx = await EventContext.from_event(event)
-    ctx.log_info("открыл меню")
-
-    keyboard, response_text = Keyboards.main_menu()
-    await event.message.answer(text=response_text, attachments=[keyboard])
-
-    log_response_detailed(
-        chat_id=ctx.chat_id,
-        response_text=response_text,
-        attachments=[keyboard],
-        reply_to=ctx.message_mid if ctx.message_mid else None
-    )
+    # Вся логика в callback_handlers
+    await CallbackHandlers.handle_start(event, context, user_name)
 
 
 @main_router.message_callback(LoggingMiddleware())
@@ -47,23 +33,7 @@ async def callbacks(callback: MessageCallback, context: MemoryContext = None):
     await callback_handler.handle(callback, context)
 
 
-@main_router.message_created(WaitingStates.waiting_for_message, LoggingMiddleware())
-async def waiting_message_handler(event: MessageCreated, context: MemoryContext):
-    """Обрабатывает сообщения, когда бот в состоянии waiting_for_message"""
-
-    ctx = await EventContext.from_event(event)
-    user_name = event.message.sender.first_name or f"User_{ctx.user_id}"
-
-    await MessageHandlers.format_received_message(
-        event=event,
-        context=context,
-        user_name=user_name,
-        user_id=ctx.user_id,
-        bot=bot
-    )
-
-
-MODE_WEBHOOK = False
+MODE_WEBHOOK = True
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)

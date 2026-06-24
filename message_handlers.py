@@ -1,6 +1,6 @@
 from imports import (MessageCreated, Audio, Video, Image, File, Sticker, Location, Contact, AttachmentUpload,
-                     Keyboards, AttachmentPayload, UploadType, pytz, MemoryContext, SenderAction, aiohttp,
-                     InputMediaBuffer, datetime, EventContext)
+                     AttachmentPayload, UploadType, pytz, SenderAction, aiohttp,
+                     InputMediaBuffer, datetime, EventContext, TextFormat, logging, EditedMessage)
 
 
 try:
@@ -22,96 +22,224 @@ class MessageHandlers:
     @staticmethod
     async def format_received_message(
             event: MessageCreated,
-            context: MemoryContext,
-            user_name: str,
-            user_id: int,
-            bot
+            response: str,
+            bot,
+            user_id: int,  # ← обязательный
+            chat_id: int,  # ← обязательный
+            chat_type: str = None,  # ← необязательный
+            attachments: list = None,
+            keyboard=None,
+            text_format=None
     ):
+        """
+        Отправляет сообщение с поддержкой вложений.
 
+        Args:
+            event: Событие от MAX
+            response: Текст сообщения (обязательный)
+            bot: Экземпляр бота
+            user_id: ID пользователя (обязательный)
+            chat_id: ID чата (обязательный)
+            chat_type: Тип чата (необязательный)
+            attachments: Список вложений (опционально)
+            keyboard: Клавиатура (опционально)
+            text_format: Формат текста (HTML/MARKDOWN)
+        """
         ctx = await EventContext.from_event(event)
-        ctx.log_info("format_received_message ВЫЗВАНА")
+        ctx.log_info(f"format_received_message ВЫЗВАНА | user: {user_id} | chat: {chat_id} | type: {chat_type}")
 
-        body = event.message.body
-        text = body.text or ""
-        attachments = body.attachments if body else []
-        chat_id = event.message.recipient.chat_id
-
-        if not attachments and not text:
-            await context.set_state(None)
-            return
-
-        default_kb = Keyboards.main_menu_keyboard()
         now = datetime.now(TZ_VOLGOGRAD)
 
-        response = await MessageHandlers._build_base_response(
-            user_name=user_name,
-            user_id=user_id,
-            now=now,
-            text=text
+        # Если есть вложения — обрабатываем
+        if attachments:
+            result = await MessageHandlers._process_attachments(
+                attachments=attachments,
+                ctx=ctx
+            )
+
+            response += f"📎 Вложения: {', '.join(result['attachment_types'])}\n"
+
+            if result['location_data']:
+                await MessageHandlers._handle_location(
+                    event=event,
+                    bot=bot,
+                    chat_id=chat_id,
+                    response=response,
+                    location_data=result['location_data'],
+                    now=now,
+                    keyboard=keyboard,
+                    text_format=text_format
+                )
+
+                ctx.log_info("format_received_message ЗАВЕРШЕНА")
+                return
+
+            elif result['need_download'] and result['audio_url']:
+                await MessageHandlers._handle_audio(
+                    event=event,
+                    bot=bot,
+                    chat_id=chat_id,
+                    response=response,
+                    audio_url=result['audio_url'],
+                    keyboard=keyboard,
+                    ctx=ctx,
+                    text_format=text_format
+                )
+
+                ctx.log_info("format_received_message ЗАВЕРШЕНА")
+                return
+
+            elif result['attachments_for_send']:
+                await MessageHandlers._handle_media(
+                    event=event,
+                    bot=bot,
+                    chat_id=chat_id,
+                    response=response,
+                    attachments_for_send=result['attachments_for_send'],
+                    attachment_types=result['attachment_types'],
+                    keyboard=keyboard,
+                    ctx=ctx,
+                    text_format=text_format
+                )
+
+                ctx.log_info("format_received_message ЗАВЕРШЕНА")
+                return
+
+        # Если нет вложений или вложения не обработаны
+        attachments_list = [keyboard] if keyboard else []
+        await event.message.answer(
+            text=response,
+            attachments=attachments_list,
+            format=text_format
         )
 
-        if not attachments:
-            await event.message.answer(response, attachments=[default_kb])
-            await context.set_state(None)
-            return
 
-        result = await MessageHandlers._process_attachments(attachments, ctx)
-
-        response += f"📎 Вложения: {', '.join(result['attachment_types'])}\n"
-
-        if result['location_data']:
-            await MessageHandlers._handle_location(
-                event=event,
-                bot=bot,
-                chat_id=chat_id,
-                response=response,
-                location_data=result['location_data'],
-                now=now,
-                default_kb=default_kb
-            )
-        elif result['need_download'] and result['audio_url']:
-            await MessageHandlers._handle_audio(
-                event=event,
-                bot=bot,
-                chat_id=chat_id,
-                response=response,
-                audio_url=result['audio_url'],
-                default_kb=default_kb,
-                ctx=ctx
-            )
-        elif result['attachments_for_send']:
-            await MessageHandlers._handle_media(
-                event=event,
-                bot=bot,
-                chat_id=chat_id,
-                response=response,
-                attachments_for_send=result['attachments_for_send'],
-                attachment_types=result['attachment_types'],
-                default_kb=default_kb,
-                ctx=ctx
-            )
-        else:
-            await event.message.answer(response)
-            ctx.log_info("Текстовый ответ отправлен (вложения не обработаны)")
-
-        await context.set_state(None)
-        await context.set_data({})
         ctx.log_info("format_received_message ЗАВЕРШЕНА")
 
     @staticmethod
-    async def _build_base_response(user_name: str, user_id: int, now: datetime, text: str) -> str:
-        """Формирует базовую часть ответа"""
-        response = (
-            f"✅ Получено сообщение!\n"
-            f"📅 {now.strftime('%d.%m.%Y %H:%M:%S')}\n"
-            f"👤 Отправитель: {user_name} (ID: {user_id})\n"
-        )
-        if text:
-            response += f"📝 Текст:\n{text}\n"
-        return response
+    async def send_message_to_user(
+            bot,
+            user_id: int,  # ← обязательный
+            response: str,
+            chat_id: int = None,  # ← если не указан, используем user_id
+            chat_type: str = None,
+            attachments: list = None,
+            keyboard=None,
+            text_format=None
+    ):
+        """
+        Отправляет сообщение пользователю.
+
+        Args:
+            bot: Экземпляр бота
+            user_id: ID пользователя (обязательный)
+            response: Текст сообщения
+            chat_id: ID чата (если не указан, используется user_id)
+            chat_type: Тип чата (необязательный)
+            attachments: Список вложений
+            keyboard: Клавиатура
+            text_format: Формат текста
+        """
+        try:
+            target_chat_id = chat_id if chat_id else user_id
+
+            attachments_list = attachments.copy() if attachments else []
+            if keyboard:
+                attachments_list.append(keyboard)
+
+            await bot.send_message(
+                chat_id=target_chat_id,
+                text=response,
+                attachments=attachments_list,
+                format=text_format
+            )
+            logging.info(f"✅ Сообщение отправлено пользователю {user_id} | chat: {target_chat_id} | type: {chat_type}")
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки сообщения пользователю {user_id}: {e}")
 
     @staticmethod
-    async def _process_attachments(attachments: list, ctx) -> dict:
+    async def send_message_to_chat(
+            bot,
+            chat_id: int,  # ← обязательный
+            response: str,
+            user_id: int = None,  # ← опционально
+            chat_type: str = None,
+            attachments: list = None,
+            keyboard=None,
+            text_format=None
+    ):
+        """
+        Отправляет сообщение в чат.
+
+        Args:
+            bot: Экземпляр бота
+            chat_id: ID чата (обязательный)
+            response: Текст сообщения
+            user_id: ID пользователя (для логирования, опционально)
+            chat_type: Тип чата (необязательный)
+            attachments: Список вложений
+            keyboard: Клавиатура
+            text_format: Формат текста
+        """
+        try:
+            attachments_list = attachments.copy() if attachments else []
+            if keyboard:
+                attachments_list.append(keyboard)
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=response,
+                attachments=attachments_list,
+                format=text_format
+            )
+            logging.info(f"✅ Сообщение отправлено в чат {chat_id} | user: {user_id} | type: {chat_type}")
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки сообщения в чат {chat_id}: {e}")
+
+    @staticmethod
+    async def send_message(
+            bot,
+            chat_id: int,  # ← обязательный
+            response: str,
+            user_id: int = None,  # ← опционально
+            chat_type: str = None,
+            attachments: list = None,
+            keyboard=None,
+            text_format=None
+    ):
+        """
+        Универсальный метод отправки сообщения.
+
+        Args:
+            bot: Экземпляр бота
+            chat_id: ID чата (обязательный)
+            response: Текст сообщения
+            user_id: ID пользователя (для логирования, опционально)
+            chat_type: Тип чата (необязательный)
+            attachments: Список вложений
+            keyboard: Клавиатура
+            text_format: Формат текста
+        """
+        try:
+            attachments_list = attachments.copy() if attachments else []
+            if keyboard:
+                attachments_list.append(keyboard)
+
+            await bot.send_message(
+                chat_id=chat_id,
+                text=response,
+                attachments=attachments_list,
+                format=text_format
+            )
+            logging.info(f"✅ Сообщение отправлено | chat: {chat_id} | user: {user_id} | type: {chat_type}")
+        except Exception as e:
+            logging.error(f"❌ Ошибка отправки сообщения: {e}")
+
+    @staticmethod
+    async def _process_attachments(
+            attachments: list,
+            ctx
+    ) -> dict:
         """Обрабатывает вложения и возвращает структурированный результат"""
         result = {
             'attachments_for_send': [],
@@ -207,7 +335,8 @@ class MessageHandlers:
         try:
             async with aiohttp.ClientSession() as session:
                 headers = {'User-Agent': 'MAX_Bot/1.0 (https://bothost.ru)'}
-                url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+                url = (f"https://nominatim.openstreetmap.org/reverse?format=json&lat="
+                       f"{lat}&lon={lon}&zoom=18&addressdetails=1")
                 async with session.get(url, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -221,9 +350,21 @@ class MessageHandlers:
         return {'lat': lat, 'lon': lon, 'address': address}
 
     @staticmethod
-    async def _handle_audio(event, bot, chat_id, response, audio_url, default_kb, ctx):
+    async def _handle_audio(
+            event,
+            bot,
+            chat_id,
+            response,
+            audio_url,
+            keyboard,
+            ctx,
+            text_format=None
+    ):
         """Обрабатывает отправку аудио"""
-        await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+        await bot.send_action(
+            chat_id=chat_id,
+            action=SenderAction.SENDING_FILE
+        )
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -237,42 +378,89 @@ class MessageHandlers:
                             filename="voice_message.ogg"
                         )
 
+                        attachments_list = [media]
+                        if keyboard:
+                            attachments_list.append(keyboard)
+
                         await bot.send_message(
                             chat_id=chat_id,
                             text=response,
-                            attachments=[media] + [default_kb]
+                            attachments=attachments_list,
+                            format=text_format
                         )
                         ctx.log_info("✅ Аудио отправлено через InputMediaBuffer")
                     else:
                         ctx.log_info(f"❌ Ошибка скачивания аудио: {resp.status}")
-                        await event.message.answer(response + "\n\n⚠️ Не удалось скачать аудио")
+                        await event.message.answer(
+                            text=response + "\n\n⚠️ Не удалось скачать аудио",
+                            format=text_format
+                        )
         except Exception as e:
             ctx.log_info(f"❌ Ошибка при обработке аудио: {e}")
-            await event.message.answer(response + f"\n\n⚠️ Ошибка: {e}")
+            await event.message.answer(
+                text=response + f"\n\n⚠️ Ошибка: {e}",
+                format=text_format
+            )
 
     @staticmethod
-    async def _handle_media(event, bot, chat_id, response, attachments_for_send, attachment_types, default_kb, ctx):
+    async def _handle_media(
+            event,
+            bot,
+            chat_id,
+            response,
+            attachments_for_send,
+            attachment_types,
+            keyboard,
+            ctx,
+            text_format=None
+    ):
         """Обрабатывает отправку фото, видео, файлов"""
         if "видео" in attachment_types:
-            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_VIDEO)
+            await bot.send_action(
+                chat_id=chat_id,
+                action=SenderAction.SENDING_VIDEO
+            )
         elif "фото" in attachment_types:
-            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_PHOTO)
+            await bot.send_action(
+                chat_id=chat_id,
+                action=SenderAction.SENDING_PHOTO
+            )
         else:
-            await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
+            await bot.send_action(
+                chat_id=chat_id,
+                action=SenderAction.SENDING_FILE
+            )
 
         try:
+            attachments_list = attachments_for_send.copy()
+            if keyboard:
+                attachments_list.append(keyboard)
+
             await bot.send_message(
                 chat_id=chat_id,
                 text=response,
-                attachments=attachments_for_send + [default_kb]
+                attachments=attachments_list,
+                format=text_format
             )
             ctx.log_info(f"✅ Сообщение отправлено с {len(attachments_for_send)} вложениями")
         except Exception as e:
             ctx.log_info(f"❌ Ошибка при отправке: {e}")
-            await event.message.answer(response + f"\n\n⚠️ Не удалось отправить вложения: {e}")
+            await event.message.answer(
+                text=response + f"\n\n⚠️ Не удалось отправить вложения: {e}",
+                format=text_format
+            )
 
     @staticmethod
-    async def _handle_location(event, bot, chat_id, response, location_data, now, default_kb):
+    async def _handle_location(
+            event,
+            bot,
+            chat_id,
+            response,
+            location_data,
+            now,
+            keyboard=None,
+            text_format=None
+    ):
         """Обрабатывает отправку геолокации"""
         lat = location_data.get('lat')
         lon = location_data.get('lon')
@@ -288,5 +476,116 @@ class MessageHandlers:
         response += f"   🗺️ Яндекс.Карты: https://yandex.ru/maps/?pt={lon},{lat}&z=15&l=map\n"
         response += f"   ⏱️ Время получения: {now.strftime('%H:%M:%S')}\n"
 
-        await bot.send_action(chat_id=chat_id, action=SenderAction.SENDING_FILE)
-        await event.message.answer(response, attachments=[default_kb])
+        await bot.send_action(
+            chat_id=chat_id,
+            action=SenderAction.SENDING_FILE
+        )
+
+        attachments_list = [keyboard] if keyboard else []
+        await event.message.answer(
+            text=response,
+            attachments=attachments_list,
+            format=text_format
+        )
+
+    @staticmethod
+    async def edit_message(
+            bot,
+            message_id: str,
+            text: str | None = None,
+            attachments: list | None = None,
+            text_format: TextFormat | None = None,
+            notify: bool | None = None,
+            sleep_after_input_media: bool | None = True
+    ) -> EditedMessage | None:
+        """
+        Редактирует существующее сообщение.
+
+        Args:
+            bot: Экземпляр бота
+            message_id: ID сообщения для редактирования
+            text: Новый текст (макс. 4000 символов)
+            attachments: Новые вложения (опционально)
+            text_format: Формат разметки (TextFormat.MARKDOWN, TextFormat.HTML)
+            notify: Отправлять ли уведомление
+            sleep_after_input_media: Задержка после загрузки вложений
+
+        Returns:
+            EditedMessage или None при ошибке
+        """
+        try:
+            result = await bot.edit_message(
+                message_id=message_id,
+                text=text,
+                attachments=attachments,
+                text_format=text_format,
+                notify=notify,
+                sleep_after_input_media=sleep_after_input_media
+            )
+            if result:
+                logging.info(f"✅ Сообщение {message_id} отредактировано")
+            return result
+        except Exception as e:
+            logging.error(f"❌ Ошибка редактирования сообщения {message_id}: {e}")
+            return None
+
+    @staticmethod
+    async def edit_message_text(
+            bot,
+            message_id: str,
+            new_text: str,
+            text_format: TextFormat | None = None,
+            notify: bool | None = None
+    ) -> EditedMessage | None:
+        """
+        Упрощённый метод для редактирования ТОЛЬКО текста сообщения.
+
+        Args:
+            bot: Экземпляр бота
+            message_id: ID сообщения для редактирования
+            new_text: Новый текст
+            text_format: Формат разметки
+            notify: Отправлять ли уведомление
+
+        Returns:
+            EditedMessage или None при ошибке
+        """
+        return await MessageHandlers.edit_message(
+            bot=bot,
+            message_id=message_id,
+            text=new_text,
+            text_format=text_format,
+            notify=notify
+        )
+
+    @staticmethod
+    async def edit_message_with_attachments(
+            bot,
+            message_id: str,
+            text: str | None = None,
+            attachments: list | None = None,
+            text_format: TextFormat | None = None,
+            notify: bool | None = None
+    ) -> EditedMessage | None:
+        """
+        Редактирует сообщение с новыми вложениями.
+
+        Args:
+            bot: Экземпляр бота
+            message_id: ID сообщения для редактирования
+            text: Новый текст (опционально)
+            attachments: Новые вложения
+            text_format: Формат разметки
+            notify: Отправлять ли уведомление
+
+        Returns:
+            EditedMessage или None при ошибке
+        """
+        return await MessageHandlers.edit_message(
+            bot=bot,
+            message_id=message_id,
+            text=text,
+            attachments=attachments,
+            text_format=text_format,
+            notify=notify
+        )

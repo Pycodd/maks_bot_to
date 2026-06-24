@@ -60,6 +60,7 @@ from maxapi.types import (
     BotStarted,
     UpdateUnion,
 
+
 )
 
 """ Импорты MaxAPI types.attachments.upload """
@@ -92,6 +93,16 @@ from maxapi.context import (
     MemoryContext,
     StatesGroup,
     State
+)
+
+""" Импорты MaxAPI methods.types.edited_message """
+from maxapi.methods.types.edited_message import (
+    EditedMessage
+)
+
+""" Импорты MaxAPI enums """
+from maxapi.enums import (
+    TextFormat
 )
 
 """ Импорты MaxAPI enums """
@@ -131,13 +142,14 @@ from responses import (
 )
 
 """ Импорты модуля callback_handlers """
-from callback_handlers import (
-    CallbackHandlers
-)
+# from callback_handlers import (
+#     CallbackHandlers
+# )
 
 """ Импорты модуля states """
 from states import (
-    WaitingStates
+    WaitingStates,
+    RegistrationStates
 )
 
 """ Импорты модуля handlers """
@@ -157,12 +169,12 @@ __all__ = [
     'Bot', 'Dispatcher', 'Router', 'InlineKeyboardBuilder', 'BaseMiddleware',
     'MessageCreated', 'MessageCallback', 'CommandStart', 'Command', 'LinkButton',
     'CallbackButton', 'MessageButton', 'RequestContactButton', 'Keyboards', 'dp',
-    'BotStarted', 'UpdateUnion', 'RequestGeoLocationButton',  'CallbackHandlers',
+    'BotStarted', 'UpdateUnion', 'RequestGeoLocationButton',
     'bot', 'main_router', 'logging_conf', 'LoggingMiddleware', 'EventContext',
     'log_response_detailed', 'BotResponses', 'WaitingStates', 'Audio', 'Video',
     'Image', 'File', 'Sticker', 'Location', 'Contact', 'WEBHOOK_SECRET', 'WEBHOOK_URL',
     'PORT', 'request', 'jsonify', 'datetime', 'WEBHOOK_PATH', 'BASE_URL', 'BOTHOST_DOMAIN',
     'AttachmentUpload', 'AttachmentPayload', 'UploadType', 'pytz', 'Flask', 'populate_initial_data',
     'init_db', 'MemoryContext', 'MessageHandlers', 'SenderAction', 'aiohttp', 'InputMediaBuffer',
-    'State', 'StatesGroup', 'dataclass', 'sqlite3', 'Path'
+    'State', 'StatesGroup', 'dataclass', 'sqlite3', 'Path', 'TextFormat', 'EditedMessage', 'RegistrationStates'
 ]

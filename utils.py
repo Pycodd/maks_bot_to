@@ -123,7 +123,21 @@ def log_response_simple(chat_id: int, response_text: str, max_length: int = 500)
 
 @dataclass
 class EventContext:
-    """Контекст события с основными данными."""
+    """
+    Контекст события с основными данными.
+
+    Этот класс служит удобной обёрткой над сырыми событиями от MaxAPI.
+    Он извлекает из события ключевые данные (чат, пользователь, текст)
+    и предоставляет удобные методы для логирования.
+
+    Attributes:
+        event (Any): Сырое событие от MaxAPI
+        chat_id (int): ID чата, в котором произошло событие
+        user_id (int): ID пользователя, инициировавшего событие
+        message_text (str): Текст сообщения (если есть)
+        message_mid (str): Уникальный ID сообщения (mid)
+        raw_event (Any): Сырое событие (дублирует event, для совместимости)
+    """
     event: Any
     chat_id: int
     user_id: int

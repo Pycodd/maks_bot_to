@@ -9,83 +9,67 @@ class Keyboards:
     @staticmethod
     def main_menu():
         """
-        Главное меню бота.
         Возвращает: (клавиатура, текст)
         """
         builder = InlineKeyboardBuilder()
-
-        builder.row(LinkButton(text="📚 Документация", url="https://dev.max.ru/docs"))
-        builder.row(
-            CallbackButton(text="⚙️ Настройки", payload="settings"),
-            CallbackButton(text="ℹ️ О боте", payload="about")
-        )
         builder.row(CallbackButton(text="✉️ Написать сообщение", payload="write_message"))
-        builder.row(RequestContactButton(text="📞 Отправить контакт"))
-        builder.row(RequestGeoLocationButton(text="Геолокация"))
 
         return builder.as_markup(), "📋 Главное меню:"
 
     @staticmethod
-    def main_menu_keyboard():
+    def create_user_keyboard_district_and_map():
         """
-        Только клавиатура главного меню (без текста).
-        Возвращает: клавиатура (можно использовать в attachments)
+        Создаёт клавиатуру с районами и словарь для сопоставления callback_data и их названий.
+
+        Возвращает:
+            tuple: (InlineKeyboardMarkup, dict) — клавиатура и словарь названий районов.
         """
+        # Словарь для сопоставления callback_data с названиями районов
+        district_names = {
+            "Dzerzhinsky": "Дзержинский",
+            "Central": "Центральный",
+            "Krasnooktyabrsky": "Краснооктябрьский",
+            "Voroshilovsky": "Ворошиловский",
+            "Soviet": "Советский",
+            "Kirov": "Кировский",
+            "Tractor": "Тракторный",
+            "Spartanovka": "Спартановка",
+            "Krasnoarmeysky": "Красноармейский",
+        }
+
+        # Создаём клавиатуру
         builder = InlineKeyboardBuilder()
 
-        builder.row(LinkButton(text="📚 Документация", url="https://dev.max.ru/docs"))
-        builder.row(
-            CallbackButton(text="⚙️ Настройки", payload="settings"),
-            CallbackButton(text="ℹ️ О боте", payload="about")
-        )
-        builder.row(CallbackButton(text="✉️ Написать сообщение", payload="write_message"))
-        builder.row(RequestContactButton(text="📞 Отправить контакт"))
-        builder.row(RequestGeoLocationButton(text="📍 Геолокация"))
+        # Каждая кнопка в отдельном ряду (как в телеграме)
+        for callback_data, display_name in district_names.items():
+            builder.row(CallbackButton(
+                text=display_name,
+                payload=f"district_{callback_data}"  # payload: district_Dzerzhinsky
+            ))
 
-        return builder.as_markup()
+        # Кнопка "Отменить" (в отдельном ряду)
+        builder.row(CallbackButton(
+            text="❌ Отменить",
+            payload="district_cancel"
+        ))
+
+        return builder.as_markup(), district_names
 
     @staticmethod
-    def default_keyboard():
+    def agreement_keyboard():
         """
-        Клавиатура по умолчанию (для ответов на любые сообщения).
-        Возвращает: клавиатура (можно использовать в attachments)
-        """
-        builder = InlineKeyboardBuilder()
-
-        builder.row(
-            CallbackButton(text="⚙️ Настройки", payload="settings"),
-            CallbackButton(text="ℹ️ О боте", payload="about"))
-        builder.row(CallbackButton(text="✉️ Написать сообщение", payload="write_message"))
-        builder.row(
-            RequestContactButton(text="📞 Отправить контакт"),
-            RequestGeoLocationButton(text="📍 Геолокация")
-        )
-
-        return builder.as_markup()
-
-    @staticmethod
-    def ten_buttons_horizontal():
-        """
-        Клавиатура из 10 кнопок в один ряд (горизонтально).
-        Возвращает: клавиатура
+        Клавиатура для принятия пользовательского соглашения.
         """
         builder = InlineKeyboardBuilder()
 
-        builder.row(CallbackButton(text="111111111111111111111111111111111", payload="num_1"))
-        builder.row(CallbackButton(text="222222222222222222222222222222222", payload="num_2"))
-        builder.row(CallbackButton(text="333333333333333333333333333", payload="num_3"))
-        builder.row(CallbackButton(text="4444444444444444", payload="num_4"))
-        builder.row(CallbackButton(text="55555555555555555555555555", payload="num_5"))
-        builder.row(CallbackButton(text="666666666666666666666666", payload="num_6"))
-        builder.row(CallbackButton(text="77777777777777777777777777777", payload="num_7"))
-        builder.row(CallbackButton(text="8", payload="num_8"))
-        builder.row(CallbackButton(text="9", payload="num_9"))
-        builder.row(CallbackButton(text="10", payload="num_10"))
+        builder.row(CallbackButton(
+            text="✅ Принять и продолжить",
+            payload="agreement_accept"
+        ))
 
-        builder.row(
-            CallbackButton(text="<<", payload="back_to_menu"),
-            CallbackButton(text="---", payload="main_menu"),
-            CallbackButton(text=">>", payload="close")
-        )
+        builder.row(CallbackButton(
+            text="❌ Отказаться",
+            payload="agreement_decline"
+        ))
 
         return builder.as_markup()
