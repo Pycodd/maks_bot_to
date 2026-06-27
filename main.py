@@ -21,7 +21,7 @@ async def start(event: MessageCreated, context: MemoryContext):
     user_name = event.message.sender.first_name or "Пользователь"
 
     # Вся логика в callback_handlers
-    await CallbackHandlers.handle_start(event, context, user_name)
+    await CallbackHandlers.handle_start(event, context, user_name, bot)
 
 
 @main_router.message_callback(LoggingMiddleware())
@@ -30,10 +30,10 @@ async def callbacks(callback: MessageCallback, context: MemoryContext = None):
     data = callback.callback.payload
     ctx.log_info(f"нажал кнопку: {data}")
 
-    await callback_handler.handle(callback, context)
+    await callback_handler.handle(callback, context, bot)
 
 
-MODE_WEBHOOK = True
+MODE_WEBHOOK = False
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)

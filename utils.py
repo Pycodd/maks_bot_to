@@ -148,11 +148,13 @@ class EventContext:
     @classmethod
     async def from_event(cls, event_obj: Any, extractors: Optional[List[Callable]] = None) -> "EventContext":
         """
-        Создаёт контекст из события.
+        # Без экстракторов
+        ctx = await EventContext.from_event(event)
+        # В ctx только основные поля: chat_id, user_id, message_text, etc.
 
-        Аргументы:
-            event_obj: Событие от MaxAPI (переименовал, чтобы не было конфликта)
-            extractors: Список дополнительных функций-экстракторов
+        # С экстракторами
+        ctx = await EventContext.from_event(event, extractors=[extract_user_info, extract_callback_data])
+        # В ctx основные поля + first_name, last_name, is_bot, callback_payload, callback_id
         """
         chat_id = _get_chat_id(event_obj)
         user_id = _get_user_id(event_obj)

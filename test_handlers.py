@@ -93,10 +93,14 @@ async def test_handler(event: MessageCreated, context: MemoryContext):
     await context.set_data({})
 
     # Просим ввести сообщение
-    await event.message.answer(
-        text="✉️ **Введите любое сообщение или прикрепите вложение.**\n\n"
-             "Я покажу что вы отправили.",
-        format=TextFormat.MARKDOWN
+    await MessageHandlers.format_received_message(
+        response="✉️ **Введите любое сообщение или прикрепите вложение.**\n\n"
+                 "Я покажу что вы отправили.",
+        bot=bot,
+        user_id=ctx.user_id,
+        chat_id=ctx.chat_id,
+        chat_type="dialog",
+        text_format=TextFormat.MARKDOWN
     )
 
 
@@ -106,7 +110,7 @@ async def test_handler(event: MessageCreated, context: MemoryContext):
 async def handle_test_message(event: MessageCreated, context: MemoryContext):
     """
     Обрабатывает сообщение в тестовом состоянии.
-    Использует MessageHandlers для ответа.
+    Передаёт всё в MessageHandlers.format_received_message.
     """
     ctx = await EventContext.from_event(event)
     ctx.log_info("📨 Получено тестовое сообщение")
@@ -122,7 +126,7 @@ async def handle_test_message(event: MessageCreated, context: MemoryContext):
     if current_state != TestStates.waiting_for_test_message:
         return
 
-    # Формируем ответ
+    # Формируем простой ответ (без дублирования логики определения вложений)
     response = "📝 **Ваше сообщение:**\n\n"
 
     if text:
@@ -130,55 +134,26 @@ async def handle_test_message(event: MessageCreated, context: MemoryContext):
     else:
         response += "**Текст:** _отсутствует_\n\n"
 
-    # Определяем тип вложения
+    # Добавляем информацию о вложениях (кратко)
     if attachments:
-        response += "📎 **Тип вложения:**\n"
-        for att in attachments:
-            if isinstance(att, Image):
-                att_type = "🖼️ Фото"
-            elif isinstance(att, Video):
-                att_type = "🎬 Видео"
-            elif isinstance(att, Audio):
-                att_type = "🎵 Аудио"
-            elif isinstance(att, File):
-                att_type = "📎 Файл"
-            elif isinstance(att, Location):
-                att_type = "📍 Геолокация"
-            elif isinstance(att, Contact):
-                att_type = "📞 Контакт"
-            elif isinstance(att, Sticker):
-                att_type = "🏷️ Стикер"
-            else:
-                att_type = f"❓ {type(att).__name__}"
-            response += f"• {att_type}\n"
+        response += f"📎 **Количество вложений:** {len(attachments)}\n"
+        response += "ℹ️ Подробный разбор типов вложений будет в ответе MessageHandlers."
     else:
         response += "📎 **Тип вложения:** _Нет вложений_\n"
 
     # Получаем клавиатуру
     keyboard, _ = Keyboards.main_menu()
 
-    # Отправляем ответ через MessageHandlers
-    if attachments:
-        await MessageHandlers.format_received_message(
-            event=event,
-            response=response,
-            bot=bot,
-            user_id=user_id,
-            chat_id=chat_id,
-            attachments=attachments,
-            keyboard=keyboard,
-            text_format=TextFormat.MARKDOWN
-        )
-    else:
-        await MessageHandlers.format_received_message(
-            event=event,
-            response=response,
-            bot=bot,
-            user_id=user_id,
-            chat_id=chat_id,
-            keyboard=keyboard,
-            text_format=TextFormat.MARKDOWN
-        )
+    # Отправляем ответ через MessageHandlers (он сам определит тип вложений)
+    await MessageHandlers.format_received_message(
+        response=response,
+        bot=bot,
+        user_id=user_id,
+        chat_id=chat_id,
+        attachments=attachments if attachments else None,
+        keyboard=keyboard,
+        text_format=TextFormat.MARKDOWN
+    )
 
     # Сбрасываем состояние
     await context.set_state(None)
@@ -195,20 +170,25 @@ async def test_write_message_callback(callback: MessageCallback, context: Memory
     """
     ctx = await EventContext.from_event(callback)
     data = callback.callback.payload
-    ctx.log_info(f"нажал кнопку: {data}")
+    ctx.log_info(f"📌 Тестовый callback | payload: {data}")
 
     if data == "write_message":
         await context.set_state(TestStates.waiting_for_test_message)
         await context.set_data({})
-        await callback.message.answer(
-            text="✉️ **Напишите сообщение**\n\n"
-                 "Вы можете прикрепить:\n"
-                 "📎 Файл\n"
-                 "🖼️ Фото\n"
-                 "🎬 Видео\n"
-                 "🎵 Аудио\n"
-                 "📍 Геолокацию\n"
-                 "📞 Контакт\n\n"
-                 "Я покажу текст и тип вложения.",
-            format=TextFormat.MARKDOWN
+
+        await MessageHandlers.format_received_message(
+            response="✉️ **Напишите сообщение**\n\n"
+                     "Вы можете прикрепить:\n"
+                     "📎 Файл\n"
+                     "🖼️ Фото\n"
+                     "🎬 Видео\n"
+                     "🎵 Аудио\n"
+                     "📍 Геолокацию\n"
+                     "📞 Контакт\n\n"
+                     "Я покажу текст и тип вложения.",
+            bot=bot,
+            user_id=ctx.user_id,
+            chat_id=ctx.chat_id,
+            chat_type="dialog",
+            text_format=TextFormat.MARKDOWN
         )
