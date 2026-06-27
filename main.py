@@ -33,7 +33,7 @@ async def callbacks(callback: MessageCallback, context: MemoryContext = None):
     await callback_handler.handle(callback, context, bot)
 
 
-MODE_WEBHOOK = False
+MODE_WEBHOOK = True
 
 
 # Режим 2: LONG POLLING (для разработки/тестирования)
